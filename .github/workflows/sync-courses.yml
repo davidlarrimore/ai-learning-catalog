@@ -1,5 +1,5 @@
 # .github/workflows/sync-courses.yml
-name: Sync Course Data to Docs
+name: Sync Course Data to GitHub Pages
 
 on:
   push:
@@ -15,16 +15,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         
-      - name: Copy courses.json to docs
+      - name: Copy courses.json to github-pages
         run: |
-          cp data/courses.json docs/data/courses.json
+          cp data/courses.json github-pages/data/courses.json
           
       - name: Commit changes
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add docs/data/courses.json
-          git diff --quiet && git diff --staged --quiet || git commit -m "Auto-sync: Update docs/data/courses.json from data/courses.json"
+          git add github-pages/data/courses.json
+          git diff --quiet && git diff --staged --quiet || git commit -m "Auto-sync: Update github-pages/data/courses.json from data/courses.json"
           
       - name: Push changes
         uses: ad-m/github-push-action@master
