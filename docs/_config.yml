@@ -1,0 +1,9 @@
+title: AI Training List
+description: Curated list of online AI training resources
+# Minimal is a supported Pages theme
+remote_theme: pages-themes/minimal@v0.2.0
+plugins:
+  - jekyll-remote-theme
+# Optional tweaks
+logo: /assets/logo.png
+show_downloads: false

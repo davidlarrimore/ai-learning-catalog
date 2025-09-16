@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import csv, os, time, pathlib, logging, re
+import csv, os, time, pathlib, logging, re, json
 from typing import Dict, Any, Set, Tuple, Optional, List
 
 # Optional fuzzy library; fall back to stdlib if unavailable
@@ -19,7 +19,8 @@ load_dotenv(override=False)
 
 # ====== CONFIG (mirror originals where possible) ======
 INPUT_CSV  = "input.csv"
-OUTPUT_CSV = "output.csv"
+OUTPUT_CSV = os.getenv("OUTPUT_CSV", os.path.join("data", "courses.csv"))
+OUTPUT_JSON = os.getenv("OUTPUT_JSON", os.path.join("data", "courses.json"))
 
 # Keep unused envs for backward compatibility with the codebase
 MODEL = os.getenv("OPENAI_MODEL", "gpt-5")
@@ -199,20 +200,35 @@ def setup_logging():
 
 
 def ensure_output_header():
-    if not pathlib.Path(OUTPUT_CSV).exists():
-        with open(OUTPUT_CSV, "w", newline="", encoding="utf-8") as f:
+    path = pathlib.Path(OUTPUT_CSV)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        with open(path, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=HEADERS)
             writer.writeheader()
+    ensure_json_file()
+
+
+def ensure_json_file():
+    path = pathlib.Path(OUTPUT_JSON)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump([], f)
 
 
 def clear_output_file():
     try:
-        path = pathlib.Path(OUTPUT_CSV)
-        if path.exists():
-            path.unlink()
+        csv_path = pathlib.Path(OUTPUT_CSV)
+        if csv_path.exists():
+            csv_path.unlink()
             logging.info(f"Removed existing {OUTPUT_CSV}.")
+        json_path = pathlib.Path(OUTPUT_JSON)
+        if json_path.exists():
+            json_path.unlink()
+            logging.info(f"Removed existing {OUTPUT_JSON}.")
     except Exception as e:
-        logging.warning(f"Could not remove {OUTPUT_CSV}: {e}. Will overwrite header.")
+        logging.warning(f"Could not remove output artifacts: {e}. Will overwrite header.")
     ensure_output_header()
     logging.info(f"Cleared {OUTPUT_CSV} per CLEAR_OUTPUT_FILE=1.")
 
@@ -233,6 +249,23 @@ def append_row(row: Dict[str, Any]):
     with open(OUTPUT_CSV, "a", newline="", encoding="utf-8") as f:
         csv.DictWriter(f, fieldnames=HEADERS).writerow(row)
         f.flush()
+    append_json_row(row)
+
+
+def append_json_row(row: Dict[str, Any]):
+    ensure_json_file()
+    path = pathlib.Path(OUTPUT_JSON)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if not isinstance(data, list):
+                data = []
+    except (json.JSONDecodeError, FileNotFoundError):
+        data = []
+
+    data.append(row)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 
 _PUNCT_RE = re.compile(r"[\t\n\r\-_/\\.,:;!?'\"()\[\]{}|@#$%^&*+~=]+")
