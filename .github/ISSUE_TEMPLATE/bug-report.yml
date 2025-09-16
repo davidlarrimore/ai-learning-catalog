@@ -1,0 +1,74 @@
+name: 🐛 Bug Report
+description: Report a problem with the catalog
+title: "[BUG] "
+labels: ["bug"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting an issue! Please provide details below.
+
+  - type: dropdown
+    id: issue-type
+    attributes:
+      label: Issue Type
+      description: What kind of problem are you experiencing?
+      options:
+        - Broken course link
+        - Incorrect course information
+        - Website not loading
+        - Search/filter not working
+        - Download feature issue
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: course-name
+    attributes:
+      label: Course Name (if applicable)
+      description: Which course is affected?
+      placeholder: "Name of the course"
+    validations:
+      required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe the issue in detail
+      placeholder: "What's wrong? What did you expect to happen?"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this issue?
+      placeholder: |
+        1. Go to...
+        2. Click on...
+        3. See error...
+    validations:
+      required: false
+
+  - type: input
+    id: url
+    attributes:
+      label: URL (if applicable)
+      description: Link to the problematic page
+      placeholder: "https://..."
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Information
+      description: Screenshots, error messages, or other relevant details
+      placeholder: "Add any other context here..."
+    validations:
+      required: false

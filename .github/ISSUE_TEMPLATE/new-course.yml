@@ -1,0 +1,157 @@
+name: 🎓 Suggest a New Course
+description: Suggest a new AI training course to add to the catalog
+title: "[NEW COURSE] "
+labels: ["new-course", "pending-review"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for contributing to the AI Training Catalog! Please fill out the information below.
+
+  - type: input
+    id: course-name
+    attributes:
+      label: Course Name
+      description: The full name of the course
+      placeholder: "e.g., Introduction to Machine Learning with Python"
+    validations:
+      required: true
+
+  - type: input
+    id: provider
+    attributes:
+      label: Provider
+      description: The organization or platform offering the course
+      placeholder: "e.g., Coursera, AWS Skill Builder, Google Cloud, etc."
+    validations:
+      required: true
+
+  - type: input
+    id: course-url
+    attributes:
+      label: Course URL
+      description: Direct link to the course page
+      placeholder: "https://..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Course Description
+      description: A brief summary of what the course covers (1-2 sentences)
+      placeholder: "This course teaches..."
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: Platform/Tools Used
+      description: Technologies, languages, or platforms used in the course
+      placeholder: "e.g., Python, TensorFlow, AWS, Jupyter Notebooks"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: skill-level
+    attributes:
+      label: Skill Level
+      description: What level of expertise is needed?
+      options:
+        - Novice
+        - Beginner
+        - Intermediate
+        - Advanced
+        - Expert
+    validations:
+      required: true
+
+  - type: dropdown
+    id: difficulty
+    attributes:
+      label: Difficulty
+      description: How challenging is the course content?
+      options:
+        - Low
+        - Easy
+        - Medium
+        - Moderate
+        - High
+        - Intense
+    validations:
+      required: true
+
+  - type: input
+    id: track
+    attributes:
+      label: Learning Track(s)
+      description: Main topics covered (separate multiple with commas)
+      placeholder: "e.g., AI Literacy, Machine Learning, Technical Skills"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: hands-on
+    attributes:
+      label: Hands-on Components
+      description: Does the course include practical exercises or projects?
+      options:
+        - "Yes"
+        - "No"
+        - "Unknown"
+    validations:
+      required: true
+
+  - type: input
+    id: length
+    attributes:
+      label: Course Length
+      description: Estimated time to complete
+      placeholder: "e.g., 2 Hours, 4 Weeks, 3 Months"
+    validations:
+      required: true
+
+  - type: input
+    id: completion
+    attributes:
+      label: Evidence of Completion
+      description: What do you get after completing?
+      placeholder: "e.g., Certificate, Badge, None"
+    validations:
+      required: true
+
+  - type: textarea
+    id: why-add
+    attributes:
+      label: Why should this course be added?
+      description: What makes this course valuable? Who would benefit?
+      placeholder: "This course is valuable because..."
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-notes
+    attributes:
+      label: Additional Information
+      description: Any other relevant details (free/paid, prerequisites, special features, etc.)
+      placeholder: "Additional notes..."
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      description: Please confirm the following
+      options:
+        - label: I have verified this is a legitimate educational resource
+          required: true
+        - label: The course is related to AI/ML or relevant technical skills
+          required: true
+        - label: The course link is publicly accessible
+          required: true
+        - label: I have provided all required information above
+          required: true
