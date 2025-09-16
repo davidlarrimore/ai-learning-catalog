@@ -29,10 +29,14 @@ docker compose up --build
 
 - Backend API: http://localhost:8000
 - Frontend admin SPA: http://localhost:8080 (talks to the API for local edits)
+- GitHub Pages preview: http://localhost:3000 (served by the `github-pages` Nginx container using `nginx-github-pages.conf` so it mirrors production routing and caching)
 - Set `OPENAI_API_KEY` in `.env` to enable enrichment; additional tunables live in `backend/app/config.py`.
+
+Previewing only the static site? Run `docker compose up github-pages` to launch just the local GitHub Pages mirror while you edit the files in `docs/`.
 
 ## Repository Highlights
 - `backend/` – FastAPI service, Celery tasks, and OpenAI enrichment logic.
 - `data/courses.json` – Canonical course catalog that powers both the API and the public site.
 - `docs/` – GitHub Pages site (`index.html`, `app.js`, `data/courses.json`) deployed at the link above.
+- `nginx-github-pages.conf` – Local Nginx config the Docker preview uses to emulate the GitHub Pages environment.
 - `scripts/` – Convenience wrappers for Docker Compose workflows.

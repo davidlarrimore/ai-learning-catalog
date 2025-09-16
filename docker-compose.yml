@@ -44,6 +44,18 @@ services:
     depends_on:
       - backend
 
+  # GitHub Pages preview server
+  github-pages:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./docs:/usr/share/nginx/html:ro
+      - ./nginx-github-pages.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "3000:80"
+    environment:
+      - NGINX_HOST=localhost
+      - NGINX_PORT=80
+
   redis:
     image: redis:7-alpine
     ports:
