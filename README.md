@@ -1,67 +1,79 @@
 # Training Processing
 
-Tools to enrich training course metadata from a CSV by calling the OpenAI API. Given an `input.csv` with at least `Provider` and `Link`, the scripts generate or refine fields and append standardized rows to `output.csv`.
+A dockerised FastAPI + Celery backend with a lightweight single page interface for curating training courses. The backend exposes APIs to list, add, and update course metadata stored in JSON, while a Redis-backed Celery worker performs the write operations. A static SPA (served by Nginx) provides a simple UI on top of the API.
 
-## Requirements
-- Python 3.11+ (tested with 3.13)
-- `pip install -r requirements.txt`
-- OpenAI API key
+## Stack
+- **Backend**: FastAPI (`backend/app/main.py`) served by Uvicorn
+- **Worker**: Celery worker sharing the backend codebase
+- **Broker/Result Store**: Redis 7
+- **Frontend**: Static HTML/CSS/JS served by Nginx with `/api` proxied to the backend
+- **Course storage**: JSON file at `data/courses.json`
 
-## Setup
-1. Create a virtual environment (recommended) and install deps:
-   - `python -m venv .venv && source .venv/bin/activate`
-   - `pip install -r requirements.txt`
-2. Copy `.env.example` to `.env` and set `OPENAI_API_KEY`. Adjust other settings as needed.
-
-## CSVs
-- `input.csv`: must include headers `Provider` and `Link`. Additional columns are ignored unless a script normalizes them.
-- `output.csv`: script output; created if missing. Existing rows are respected (resume by skipping existing links) unless you set `CLEAR_OUTPUT_FILE=1`.
-
-## Scripts
-- `app.py`: Main end‑to‑end processor. Calls the OpenAI Responses API (or falls back) to fill all required fields using a strict JSON schema, then appends a canonicalized row to `output.csv`.
-- `description.py`: Validates whether a Summary is meaningful; if not, generates a new concise Summary and writes the row.
-- `difficulty.py`: Determines Difficulty (Easy/Moderate/Intense) from available info and writes the row.
-- `length.py`: Estimates/sets the Length field (rounded hours) and writes the row.
-- `skilllevel.py`: Determines Skill Level (Novice/Intermediate/Expert/Master) and writes the row.
-
-Run any script with:
+## Prerequisites
+- Docker and Docker Compose
+## Getting Started
+```bash
+docker compose up --build
 ```
-python app.py
-# or
-python description.py
-python difficulty.py
-python length.py
-python skilllevel.py
+This will start four services:
+- `backend` – FastAPI on [http://localhost:8000](http://localhost:8000)
+- `worker` – Celery worker consuming course tasks
+- `frontend` – SPA on [http://localhost:8080](http://localhost:8080)
+- `redis` – Redis broker/result store on port `6379`
+
+The FastAPI server runs with autoreload and your local repo is bind-mounted into the container so code changes take effect immediately.
+
+### Frontend
+Open [http://localhost:8080](http://localhost:8080) to:
+- View the current course catalogue
+- Add a new course (submits a Celery task, auto-refreshes on completion)
+- Edit an existing course (loads values into the form and performs a PUT)
+- Enrich from a course URL (calls `/courses/enrich` and saves the result)
+
+### API Quick Reference
+- `GET /courses` → List all stored courses
+- `POST /courses` → Create a course (`CourseCreate` payload)
+- `PUT /courses/{course_link}` → Update the course identified by its link
+- `POST /courses/enrich` → Provide a URL (and optional provider/name) to auto-enrich and persist a course via OpenAI
+- `GET /health` → Basic health check
+
+All endpoints accept/emit JSON using the snake_case field names from `course_model.Course`.
+
+### Environment Variables
+Most settings default to sensible values but can be overridden in `docker-compose.yml` or a `.env` file:
+- `COURSES_PATH` – JSON file used to persist courses (default `data/courses.json`)
+- `CELERY_BROKER_URL` / `CELERY_RESULT_BACKEND` – Redis connection strings
+- `TASK_TIMEOUT` – seconds to wait for Celery task results (default `10`)
+- `OPENAI_API_KEY` – required for `/courses/enrich`
+- `OPENAI_MODEL` – model used for enrichment (default `gpt-4o-mini`)
+- `OPENAI_REQUEST_TIMEOUT` – seconds to wait when fetching pages / calling OpenAI (default `60`)
+- `OPENAI_CONTEXT_CHARS` – maximum characters from a fetched course page used in prompts (default `6000`)
+
+## Project Structure (new pieces)
+```
+backend/
+  app/
+    main.py        # FastAPI application
+    tasks.py       # Celery tasks for course mutations
+    repository.py  # JSON-backed course persistence helper
+    config.py      # Environment-driven settings
+frontend/
+  Dockerfile
+  index.html       # Simple SPA
+  app.js           # Frontend logic (fetch, forms)
+  styles.css
+  nginx.conf       # Static hosting + /api proxy
 ```
 
-## Environment Variables
-Defined/used across the scripts (see `.env.example` for defaults):
-- `OPENAI_API_KEY` (required): Your API key.
-- `OPENAI_MODEL`: Model name (default in code: `gpt-5`).
-- `INPUT_CSV`, `OUTPUT_CSV`: Input and output file paths.
-- `LOG_LEVEL`: `DEBUG|INFO|WARNING|ERROR` (default `INFO`).
-- `NO_COLOR`: `1` disables colored log output.
-- `OPENAI_REQUEST_TIMEOUT`: Request timeout in seconds (default `60`).
-- `OPENAI_MAX_RETRIES`: Internal retries in the OpenAI client (default `1`).
-- `MAX_RETRIES`: Outer retry loop for our requests (default `6`).
-- `RATE_LIMIT_RPM`: Requests per minute target (default `1`).
-- `BATCH_SIZE`: Rows to process per batch before cooldown (default `1`).
-- `BATCH_PAUSE_SECONDS`: Cooldown between batches (default `15`).
-- `ENABLE_WEB_SEARCH`: Enable `web_search_preview` tool when available (`1|0`). If you don’t have access, set `0`.
-- `DISABLE_RESPONSES_FORMAT`: Set `1` to avoid JSON‑schema response_format when using Responses API.
-- `FORCE_CHAT_COMPLETIONS`: Set `1` to force Chat Completions path.
-- `FORCE_RESPONSES`: Set `1` to force the Responses API path.
-- `SKIP_OPENAI_HEALTH_CHECK`: Set `1` to skip a startup model availability check.
-- `CLEAR_OUTPUT_FILE`: Set `1` to clear `output.csv` and write only the header at start.
+## Helper Scripts
+- `./scripts/up.sh [additional docker compose args]` – default `up --detach --build`
+- `./scripts/down.sh [args]` – wraps `docker compose down`
+- `./scripts/restart.sh [args]` – runs `down` then `up --detach` with optional extra flags
+- `./scripts/logs.sh [service...]` – tails compose logs (defaults to `-f` all services)
 
-## Behavior Notes
-- Resume safety: When not clearing the output file, the scripts skip links already present in `output.csv` (link‑based resume).
-- Rate limits: A per‑request delay is computed from `RATE_LIMIT_RPM`, plus batch‑level cooldowns after `BATCH_SIZE` rows to reduce burst risk.
-- Health check: On startup, scripts can verify `OPENAI_API_KEY` and model availability. Use `SKIP_OPENAI_HEALTH_CHECK=1` to bypass (e.g., when model retrieval is restricted but requests will still succeed).
-- Responses vs. Chat: Scripts prefer the Responses API with JSON schema; they can fall back to Chat Completions or disable schema formatting if your environment doesn’t support it.
+## Useful Commands
+- `docker compose logs -f backend` – follow API logs
+- `docker compose logs -f worker` – inspect the Celery worker
+- `docker compose down` – stop all services
 
-## Troubleshooting
-- `OPENAI_API_KEY is not set`: Ensure it’s present in `.env` or your environment.
-- Model/Responses errors: Try `DISABLE_RESPONSES_FORMAT=1` or `FORCE_CHAT_COMPLETIONS=1`.
-- Tooling access: If you lack `web_search_preview`, set `ENABLE_WEB_SEARCH=0`.
-
+Feel free to adapt the containers (e.g. add Flower for task monitoring or hook up a persistent database) as your workflow evolves.
