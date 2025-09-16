@@ -44,7 +44,7 @@ body:
       description: A brief summary of what the course covers (1-2 sentences)
       placeholder: "This course teaches..."
     validations:
-      required: true
+      required: false
 
   - type: input
     id: platform
@@ -67,7 +67,7 @@ body:
         - Advanced
         - Expert
     validations:
-      required: true
+      required: false
 
   - type: dropdown
     id: difficulty
@@ -82,28 +82,7 @@ body:
         - High
         - Intense
     validations:
-      required: true
-
-  - type: input
-    id: track
-    attributes:
-      label: Learning Track(s)
-      description: Main topics covered (separate multiple with commas)
-      placeholder: "e.g., AI Literacy, Machine Learning, Technical Skills"
-    validations:
       required: false
-
-  - type: dropdown
-    id: hands-on
-    attributes:
-      label: Hands-on Components
-      description: Does the course include practical exercises or projects?
-      options:
-        - "Yes"
-        - "No"
-        - "Unknown"
-    validations:
-      required: true
 
   - type: input
     id: length
@@ -112,7 +91,7 @@ body:
       description: Estimated time to complete
       placeholder: "e.g., 2 Hours, 4 Weeks, 3 Months"
     validations:
-      required: true
+      required: false
 
   - type: input
     id: completion
@@ -121,7 +100,7 @@ body:
       description: What do you get after completing?
       placeholder: "e.g., Certificate, Badge, None"
     validations:
-      required: true
+      required: false
 
   - type: textarea
     id: why-add
@@ -129,15 +108,6 @@ body:
       label: Why should this course be added?
       description: What makes this course valuable? Who would benefit?
       placeholder: "This course is valuable because..."
-    validations:
-      required: false
-
-  - type: textarea
-    id: additional-notes
-    attributes:
-      label: Additional Information
-      description: Any other relevant details (free/paid, prerequisites, special features, etc.)
-      placeholder: "Additional notes..."
     validations:
       required: false
 

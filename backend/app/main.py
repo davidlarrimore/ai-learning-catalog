@@ -5,7 +5,7 @@ from celery.exceptions import TimeoutError
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from course_model import ensure_store
+from .course_model import ensure_store
 
 from .config import get_settings
 from .enrichment import CourseEnricher

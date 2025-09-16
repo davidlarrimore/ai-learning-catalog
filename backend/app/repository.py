@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterable
 
-from course_model import Course, append_course, ensure_store, load_courses, save_courses
+from .course_model import Course, append_course, ensure_store, load_courses, save_courses
 
 
 class CourseRepository:

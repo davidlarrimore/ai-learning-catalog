@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from course_model import ensure_store
+from .course_model import ensure_store
 
 from .celery_app import celery_app
 from .config import get_settings
