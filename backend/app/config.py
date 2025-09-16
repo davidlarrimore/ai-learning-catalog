@@ -5,6 +5,11 @@ from functools import lru_cache
 from pathlib import Path
 import os
 
+from dotenv import load_dotenv
+
+
+load_dotenv()
+
 
 class Settings:
     """Lightweight settings object backed by environment variables."""

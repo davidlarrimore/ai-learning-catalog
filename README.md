@@ -44,7 +44,7 @@ Most settings default to sensible values but can be overridden in `docker-compos
 - `COURSES_PATH` – JSON file used to persist courses (default `data/courses.json`)
 - `CELERY_BROKER_URL` / `CELERY_RESULT_BACKEND` – Redis connection strings
 - `TASK_TIMEOUT` – seconds to wait for Celery task results (default `10`)
-- `OPENAI_API_KEY` – required for `/courses/enrich`
+- `OPENAI_API_KEY` – required for `/courses/enrich`; defined in `.env` which is loaded automatically for backend/worker containers
 - `OPENAI_MODEL` – model used for enrichment (default `gpt-4o-mini`)
 - `OPENAI_REQUEST_TIMEOUT` – seconds to wait when fetching pages / calling OpenAI (default `60`)
 - `OPENAI_CONTEXT_CHARS` – maximum characters from a fetched course page used in prompts (default `6000`)

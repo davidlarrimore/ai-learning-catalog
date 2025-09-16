@@ -11,6 +11,46 @@ body {
   margin-inline: auto;
 }
 
+#toast-container {
+  position: fixed;
+  top: 1.5rem;
+  right: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  z-index: 1000;
+}
+
+.toast {
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  background: rgba(60, 64, 67, 0.92);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  min-width: 220px;
+  font-size: 0.9rem;
+  animation: fade-in 0.2s ease-out;
+}
+
+.toast.alert-success {
+  background: #137333;
+}
+
+.toast.alert-error {
+  background: #d93025;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 header {
   padding: 1.5rem 0 0.5rem;
 }
