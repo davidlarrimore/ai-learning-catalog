@@ -4,15 +4,254 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Training Catalog - Your AI Learning Journey</title>
-    <meta name="description" content="A curated collection of 240+ free online AI courses from leading platforms">
-    <meta property="og:title" content="AI Training Catalog">
-    <meta property="og:description" content="Discover your AI learning path with 240+ free courses">
-    <meta property="og:type" content="website">
     <link rel="stylesheet" href="styles.css">
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎓</text></svg>">
 </head>
 <body>
-    <!-- Content will be in the full file -->
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="container">
+            <div class="nav-brand">
+                <svg class="logo-icon" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                    <path d="M2 17l10 5 10-5"/>
+                    <path d="M2 12l10 5 10-5"/>
+                </svg>
+                <span>AI Training Catalog</span>
+            </div>
+            <div class="nav-links">
+                <a href="#courses">Courses</a>
+                <a href="#about">About</a>
+                <a href="#contribute">Contribute</a>
+                <a href="https://github.com/yourusername/ai-training-catalog" target="_blank">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                    </svg>
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="container">
+            <h1>Discover Your AI Learning Path</h1>
+            <p class="hero-subtitle">A curated collection of 240+ online AI courses from leading platforms</p>
+            <div class="hero-stats">
+                <div class="stat">
+                    <span class="stat-number" id="total-courses">240+</span>
+                    <span class="stat-label">Courses</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-number" id="total-providers">25+</span>
+                    <span class="stat-label">Providers</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-number">Free</span>
+                    <span class="stat-label">& Accessible</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Main Content -->
+    <main class="container" id="courses">
+        <!-- Search and Filters -->
+        <div class="search-section">
+            <div class="search-bar">
+                <svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <circle cx="11" cy="11" r="8"/>
+                    <path d="m21 21-4.35-4.35"/>
+                </svg>
+                <input type="text" id="search-input" placeholder="Search courses by name, provider, or description...">
+            </div>
+            
+            <div class="filters">
+                <select id="provider-filter" class="filter-select">
+                    <option value="">All Providers</option>
+                </select>
+                
+                <select id="skill-filter" class="filter-select">
+                    <option value="">All Skill Levels</option>
+                    <option value="Novice">Novice</option>
+                    <option value="Beginner">Beginner</option>
+                    <option value="Intermediate">Intermediate</option>
+                    <option value="Advanced">Advanced</option>
+                    <option value="Expert">Expert</option>
+                </select>
+                
+                <select id="difficulty-filter" class="filter-select">
+                    <option value="">All Difficulties</option>
+                    <option value="Low">Low</option>
+                    <option value="Easy">Easy</option>
+                    <option value="Medium">Medium</option>
+                    <option value="Moderate">Moderate</option>
+                    <option value="High">High</option>
+                    <option value="Intense">Intense</option>
+                </select>
+
+                <select id="track-filter" class="filter-select">
+                    <option value="">All Tracks</option>
+                    <option value="AI Literacy">AI Literacy</option>
+                    <option value="Technical Skills">Technical Skills</option>
+                    <option value="Machine Learning">Machine Learning</option>
+                    <option value="Prompt Engineering">Prompt Engineering</option>
+                    <option value="Responsible AI">Responsible AI</option>
+                    <option value="Data Science">Data Science</option>
+                    <option value="MLOps">MLOps</option>
+                    <option value="RAG">RAG</option>
+                </select>
+
+                <button id="clear-filters" class="btn-secondary">Clear Filters</button>
+            </div>
+
+            <div class="action-bar">
+                <div class="results-count">
+                    <span id="results-count">0 courses found</span>
+                </div>
+                <div class="download-buttons">
+                    <button id="download-csv" class="btn-download">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        Download CSV
+                    </button>
+                    <button id="download-excel" class="btn-download">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        Download Excel
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Course Cards Grid -->
+        <div id="courses-grid" class="courses-grid">
+            <!-- Courses will be loaded here -->
+        </div>
+
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <p>Loading courses...</p>
+        </div>
+
+        <div id="no-results" class="no-results" style="display: none;">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <circle cx="11" cy="11" r="8"/>
+                <path d="m21 21-4.35-4.35"/>
+            </svg>
+            <h3>No courses found</h3>
+            <p>Try adjusting your filters or search terms</p>
+        </div>
+    </main>
+
+    <!-- About Section -->
+    <section id="about" class="about-section">
+        <div class="container">
+            <h2>About This Project</h2>
+            <div class="about-content">
+                <div class="about-card">
+                    <h3>Our Mission</h3>
+                    <p>Creating a curated repository of online AI courses to help people on their AI journey. We believe that AI education should be accessible to everyone, regardless of their background or financial situation.</p>
+                </div>
+                <div class="about-card">
+                    <h3>What We Offer</h3>
+                    <p>A comprehensive catalog of AI training courses from leading platforms like UiPath Academy, AWS Skill Builder, Google Cloud Skillsboost, Microsoft Learn, Coursera, DeepLearning.AI, and many more.</p>
+                </div>
+                <div class="about-card">
+                    <h3>How It Works</h3>
+                    <p>Browse, search, and filter courses by provider, skill level, difficulty, and learning track. Click on any course to visit the provider's website and start learning immediately.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Contribute Section -->
+    <section id="contribute" class="contribute-section">
+        <div class="container">
+            <h2>Contribute to the Catalog</h2>
+            <div class="contribute-content">
+                <p>Help us grow this resource by suggesting new courses or reporting issues!</p>
+                
+                <div class="contribute-steps">
+                    <div class="step">
+                        <div class="step-number">1</div>
+                        <h3>Found a Course?</h3>
+                        <p>Visit our GitHub repository and create a new issue</p>
+                    </div>
+                    <div class="step">
+                        <div class="step-number">2</div>
+                        <h3>Provide Details</h3>
+                        <p>Include course URL, provider name, and brief description</p>
+                    </div>
+                    <div class="step">
+                        <div class="step-number">3</div>
+                        <h3>We'll Review</h3>
+                        <p>We'll verify and add the course to our catalog</p>
+                    </div>
+                </div>
+
+                <div class="github-buttons">
+                    <a href="https://github.com/yourusername/ai-training-catalog/issues/new?template=new-course.md" class="btn-primary" target="_blank">
+                        Suggest a Course
+                    </a>
+                    <a href="https://github.com/yourusername/ai-training-catalog/issues/new" class="btn-secondary" target="_blank">
+                        Report an Issue
+                    </a>
+                </div>
+
+                <div class="issue-template">
+                    <h3>Course Submission Template</h3>
+                    <pre><code>**Course Name:** 
+**Provider:** 
+**Course URL:** 
+**Description:** 
+**Skill Level:** (Novice/Beginner/Intermediate/Advanced/Expert)
+**Hands-on:** (Yes/No)
+**Length:** 
+**Evidence of Completion:** (Certificate/Badge/etc)
+
+**Additional Notes:**</code></pre>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h4>AI Training Catalog</h4>
+                    <p>Your gateway to AI education</p>
+                </div>
+                <div class="footer-section">
+                    <h4>Quick Links</h4>
+                    <ul>
+                        <li><a href="#courses">Browse Courses</a></li>
+                        <li><a href="#about">About</a></li>
+                        <li><a href="#contribute">Contribute</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>Resources</h4>
+                    <ul>
+                        <li><a href="https://github.com/yourusername/ai-training-catalog" target="_blank">GitHub</a></li>
+                        <li><a href="https://github.com/yourusername/ai-training-catalog/issues" target="_blank">Report Issue</a></li>
+                        <li><a href="https://github.com/yourusername/ai-training-catalog/blob/main/LICENSE" target="_blank">License</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2025 AI Training Catalog. Open source project for the AI community.</p>
+            </div>
+        </div>
+    </footer>
+
     <script src="app.js"></script>
 </body>
 </html>

@@ -4,7 +4,7 @@ This directory contains the GitHub Pages site for the AI Training Catalog.
 
 ## 🌐 Live Site
 
-Visit: https://davidlarrimore@gmail.com.github.io/ai-training-catalog/
+Visit: https://davidlarrimore.github.io/ai-training-catalog/
 
 ## 📁 Files
 
