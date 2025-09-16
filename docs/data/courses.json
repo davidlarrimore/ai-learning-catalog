@@ -2340,7 +2340,7 @@
     "Evidence of Completion": "Submit 2-3 sentence reflection Form"
   },
   {
-    "Provider": "H-EDUCATE via YouTube / Class Central",
+    "Provider": "YouTube",
     "Link": "https://www.classcentral.com/course/youtube-chatgpt-prompt-engineering-course-146290",
     "Course Name": "ChatGPT Prompt Engineering Course",
     "Summary": "An introductory video-course teaching prompt engineering for ChatGPT: basics like LLM / NLP definitions, then various prompt types, practical examples, and factors like tokens, temperature, etc.",
@@ -2349,8 +2349,8 @@
     "Hands On": "No (video + examples; no coding tasks)",
     "Skill Level": "Novice",
     "Difficulty": "Easy",
-    "Length": "1 Hours",
-    "Evidence of Completion": "Submit 2-3 sentence reflection Form"
+    "Length": "0 Hours",
+    "Evidence of Completion": "Unknown"
   },
   {
     "Provider": "University of Helsinki (mooc.fi)",
@@ -2496,7 +2496,7 @@
     "Evidence of Completion": "Submit 2-3 sentence reflection Form"
   },
   {
-    "Provider": "YouTube / MIT GenAI Summit",
+    "Provider": "YouTube",
     "Link": "https://youtu.be/zjkBMFhNj_g?si=n0glkNLVdHMqi1Yd",
     "Course Name": "[Video] Intro to Large Language Models",
     "Summary": "A talk-style introduction explaining what large language models are, how they work, use cases, limitations, and perhaps some architectural basics.",
