@@ -4,6 +4,7 @@ from __future__ import annotations
 from celery.exceptions import TimeoutError
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from urllib.parse import unquote
 
 from .course_model import ensure_store
 
@@ -51,9 +52,11 @@ def _fallback_create(payload: dict[str, str]) -> CourseOut:
 
 def _fallback_update(link: str, payload: dict[str, str]) -> CourseOut:
     repo = _get_repo()
+    print(f"DEBUG FALLBACK: Updating with link='{link}'")
     try:
         course = repo.update_course("link", link, payload)
     except KeyError as exc:
+        print(f"DEBUG FALLBACK: KeyError: {exc}")
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return CourseOut.model_validate(course.model_dump())
 
@@ -114,16 +117,38 @@ def create_course(course: CourseCreate) -> CourseOut:
 
 @app.put("/courses/{course_link:path}", response_model=CourseOut)
 def update_course(course_link: str, update: CourseUpdate) -> CourseOut:
+    """Update a course by its link (URL path parameter)."""
     data = update.model_dump(exclude_unset=True)
     if not data:
         raise HTTPException(status_code=400, detail="No fields provided for update")
-    async_result = update_course_task.delay(course_link, data)
+    
+    # FastAPI partially decodes path parameters, so we need to reconstruct the full URL
+    # If we see 'https:/' it means 'https://' was sent as 'https%3A%2F%2F' but got partially decoded
+    if course_link.startswith('https:/') and not course_link.startswith('https://'):
+        # Reconstruct the proper URL - FastAPI decoded %2F to / but left %3A as :
+        decoded_link = course_link.replace('https:/', 'https://')
+        print(f"DEBUG API: Fixed partial decode: '{course_link}' -> '{decoded_link}'")
+    elif course_link.startswith('http:/') and not course_link.startswith('http://'):
+        # Handle http URLs too
+        decoded_link = course_link.replace('http:/', 'http://')
+        print(f"DEBUG API: Fixed partial decode: '{course_link}' -> '{decoded_link}'")
+    else:
+        # For other cases, try normal URL decoding
+        decoded_link = unquote(course_link)
+        print(f"DEBUG API: Standard decode: '{course_link}' -> '{decoded_link}'")
+    
+    print(f"DEBUG API: Final decoded link: '{decoded_link}'")
+    
+    async_result = update_course_task.delay(decoded_link, data)
     try:
         payload = async_result.get(timeout=_get_timeout())
     except TimeoutError:  # pragma: no cover - defensive
-        return _fallback_update(course_link, data)
+        print("DEBUG API: Celery timeout, using fallback")
+        return _fallback_update(decoded_link, data)
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        print(f"DEBUG API: KeyError from Celery: {exc}")
+        raise HTTPException(status_code=404, detail=f"Course not found: {str(exc)}") from exc
+    
     return _validate_course_payload(payload)
 
 
