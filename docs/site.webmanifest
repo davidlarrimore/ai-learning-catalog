@@ -1,0 +1,73 @@
+{
+    "name": "AI Training Catalog",
+    "short_name": "AI Catalog",
+    "description": "A comprehensive collection of 200+ free AI training courses from leading platforms. Find courses for every skill level - from beginners to experts.",
+    "start_url": "./",
+    "display": "standalone",
+    "background_color": "#ffffff",
+    "theme_color": "#6366f1",
+    "orientation": "portrait-primary",
+    "scope": "./",
+    "lang": "en-US",
+    "dir": "ltr",
+    "categories": ["education", "productivity", "reference"],
+    "icons": [
+        {
+            "src": "./favicon-16x16.png",
+            "sizes": "16x16",
+            "type": "image/png"
+        },
+        {
+            "src": "./favicon-32x32.png",
+            "sizes": "32x32",
+            "type": "image/png"
+        },
+        {
+            "src": "./apple-touch-icon.png",
+            "sizes": "180x180",
+            "type": "image/png"
+        }
+    ],
+    "shortcuts": [
+        {
+            "name": "Browse Courses",
+            "short_name": "Courses",
+            "description": "Browse all AI training courses",
+            "url": "./#courses",
+            "icons": [
+                {
+                    "src": "./favicon-96x96.png",
+                    "sizes": "96x96"
+                }
+            ]
+        },
+        {
+            "name": "Contribute",
+            "short_name": "Contribute",
+            "description": "Suggest a new course",
+            "url": "./#contribute",
+            "icons": [
+                {
+                    "src": "./favicon-96x96.png",
+                    "sizes": "96x96"
+                }
+            ]
+        }
+    ],
+    "screenshots": [
+        {
+            "src": "./screenshot-desktop.png",
+            "sizes": "1280x720",
+            "type": "image/png",
+            "form_factor": "wide",
+            "label": "AI Training Catalog - Desktop View"
+        },
+        {
+            "src": "./screenshot-mobile.png",
+            "sizes": "375x667",
+            "type": "image/png",
+            "form_factor": "narrow",
+            "label": "AI Training Catalog - Mobile View"
+        }
+    ]
+}

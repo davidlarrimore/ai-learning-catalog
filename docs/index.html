@@ -4,8 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Open Source AI Learning Catalog - Start your AI Journey Here</title>
-    <link rel="stylesheet" href="styles.css">
-
     <!-- Favicons -->
     <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32x32.png">
@@ -15,8 +13,42 @@
     <meta name="msapplication-TileColor" content="#6366f1">
     <meta name="theme-color" content="#6366f1">
     
+    <!-- Stylesheet -->
     <link rel="stylesheet" href="styles.css">
-    
+
+    <!-- Structured Data (JSON-LD) -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "AI Training Catalog",
+        "alternateName": "Open Source AI Learning Catalog",
+        "url": "https://davidlarrimore.github.io/ai-learning-catalog/",
+        "description": "A comprehensive collection of 200+ free AI training courses from leading platforms like AWS, Google Cloud, Microsoft, DeepLearning.AI, and more.",
+        "inLanguage": "en-US",
+        "author": {
+            "@type": "Organization",
+            "name": "AI Training Catalog",
+            "url": "https://github.com/davidlarrimore/ai-learning-catalog"
+        },
+        "potentialAction": {
+            "@type": "SearchAction",
+            "target": {
+                "@type": "EntryPoint",
+                "urlTemplate": "https://davidlarrimore.github.io/ai-learning-catalog/?search={search_term_string}"
+            },
+            "query-input": "required name=search_term_string"
+        },
+        "mainEntity": {
+            "@type": "ItemList",
+            "name": "AI Training Courses",
+            "description": "Curated list of online AI training resources",
+            "numberOfItems": "200+"
+        }
+    }
+    </script>
+
+
     <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-G6EH9RNDM6"></script>
     
