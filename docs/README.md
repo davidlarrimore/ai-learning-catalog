@@ -1,10 +1,10 @@
-# AI Training Catalog - GitHub Pages
+# AI Learning Catalog - GitHub Pages
 
 This directory contains the GitHub Pages site for the AI Training Catalog.
 
 ## 🌐 Live Site
 
-Visit: https://davidlarrimore.github.io/ai-training-catalog/
+Visit: https://davidlarrimore.github.io/ai-learning-catalog/
 
 ## 📁 Files
 

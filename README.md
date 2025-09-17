@@ -1,4 +1,4 @@
-# AI Training List
+# AI Learning Catalog
 
 This repository curates a public, continuously updated list of AI and GenAI training opportunities. A static site publishes the catalog, while an automated backend gathers, normalizes, and enriches course metadata so people can quickly discover relevant learning paths.
 
