@@ -1,8 +1,25 @@
-FROM nginx:1.27-alpine
+# syntax=docker/dockerfile:1.7
 
-COPY frontend/nginx.conf /etc/nginx/nginx.conf
-COPY frontend/index.html /usr/share/nginx/html/index.html
-COPY frontend/styles.css /usr/share/nginx/html/styles.css
-COPY frontend/app.js /usr/share/nginx/html/app.js
+FROM node:20-alpine AS deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
 
-EXPOSE 80
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN npm run build
+
+FROM node:20-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/public ./app/public
+COPY --from=builder /app/.next/static ./app/.next/static
+
+USER node
+EXPOSE 3000
+CMD ["node", "app/server.js"]

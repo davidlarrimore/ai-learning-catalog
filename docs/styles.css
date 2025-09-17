@@ -91,7 +91,7 @@ body {
 /* Hero Section */
 .hero {
     background: linear-gradient(135deg, rgba(102, 126, 234, 0.8) 0%, rgba(118, 75, 162, 0.8) 100%), 
-                url('/assets/images/banner.png') center/cover no-repeat;
+                url('./assets/images/banner.png') center/cover no-repeat;
     color: white;
     padding: 4rem 0;
     text-align: center;

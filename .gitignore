@@ -14,7 +14,6 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
 lib64/
 parts/
 sdist/
@@ -68,3 +67,19 @@ Thumbs.db
 # Project artifacts
 output.csv
 
+
+# Node / Next.js
+node_modules/
+.npm/
+.npmrc
+.next/
+.vercel/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.turbo/
+*.tsbuildinfo
