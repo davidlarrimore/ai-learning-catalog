@@ -3,7 +3,7 @@
 This repository curates a public, continuously updated list of AI and GenAI training opportunities. A static site publishes the catalog, while an automated backend gathers, normalizes, and enriches course metadata so people can quickly discover relevant learning paths.
 
 ## Access the Catalog
-- Visit the live list at https://davidlarrimore.github.io/ai-training-list/
+- Visit the live list at https://davidlarrimore.github.io/ai-learning-catalog/
 - The site (contents under `docs/`) loads `docs/data/courses.json` and lets you search, filter, and deep-link directly to providers.
 - Updates land automatically whenever the course data is refreshed in `data/courses.json` (see automation details below).
 
