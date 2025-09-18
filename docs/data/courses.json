@@ -2398,9 +2398,9 @@
   },
   {
     "id": "8edd3d18834b4b0f877f87b10868094c",
-    "version": 2,
+    "version": 3,
     "date_created": "2025-09-18T20:27:17.494545Z",
-    "last_updated": "2025-09-18T20:43:41.442656Z",
+    "last_updated": "2025-09-18T20:52:39.308293Z",
     "Provider": "LangChain Academy",
     "Link": "https://academy.langchain.com/courses/deep-agents-with-langgraph",
     "Course Name": "Deep Agents with LangGraph",
@@ -2410,7 +2410,7 @@
     "Hands On": "Yes — includes video lessons + project-style modules with hands-on components",
     "Skill Level": "Intermediate",
     "Difficulty": "High",
-    "Length": "1 hour of video content",
+    "Length": "1 Hour",
     "Evidence of Completion": "Certificate"
   },
   {
