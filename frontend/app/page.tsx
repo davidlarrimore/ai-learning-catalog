@@ -19,6 +19,10 @@ type CourseFormValues = {
 };
 
 type Course = CourseFormValues & {
+  id: string;
+  version: number;
+  date_created: string;
+  last_updated: string;
   [key: string]: unknown;
 };
 
@@ -169,7 +173,8 @@ async function extractErrorMessage(response: Response): Promise<string> {
 export default function Home() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [enrichData, setEnrichData] = useState<EnrichFormValues>(makeEnrichDefaults);
-  const [editingLink, setEditingLink] = useState<string | null>(null);
+  const [editingCourseId, setEditingCourseId] = useState<string | null>(null);
+  const [editingCourseVersion, setEditingCourseVersion] = useState<number | null>(null);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
   const [modalFormData, setModalFormData] = useState<CourseFormValues>(makeFormDefaults);
   const [modalAlert, setModalAlert] = useState<AlertState>(defaultAlert);
@@ -229,7 +234,30 @@ export default function Home() {
         }
         const payload = (await response.json()) as CourseListResponse;
         const normalised = Array.isArray(payload.items)
-          ? payload.items.map((course) => ({ ...makeFormDefaults(), ...course }))
+          ? payload.items
+              .map((course) => {
+                const id = typeof course.id === 'string' ? course.id : '';
+                const versionValue =
+                  typeof course.version === 'number'
+                    ? course.version
+                    : Number((course as Record<string, unknown>).version ?? 1) || 1;
+                const dateCreatedRaw = (course as Record<string, unknown>).date_created;
+                const lastUpdatedRaw = (course as Record<string, unknown>).last_updated;
+                const dateCreated = typeof dateCreatedRaw === 'string' && dateCreatedRaw ? dateCreatedRaw : new Date().toISOString();
+                const lastUpdated = typeof lastUpdatedRaw === 'string' && lastUpdatedRaw ? lastUpdatedRaw : dateCreated;
+                if (!id) {
+                  return null;
+                }
+                return {
+                  ...makeFormDefaults(),
+                  ...course,
+                  id,
+                  version: versionValue,
+                  date_created: dateCreated,
+                  last_updated: lastUpdated,
+                } as Course;
+              })
+              .filter((item): item is Course => item !== null)
           : [];
         setCourses(normalised);
         const nextAvailableFilters = makeEmptyAvailableFilters();
@@ -285,7 +313,9 @@ export default function Home() {
   const startEditing = useCallback(
     (course: Course) => {
       setModalMode('edit');
-      setEditingLink(course.link);
+      setEditingCourseId(course.id);
+      const nextVersion = typeof course.version === 'number' ? course.version : Number(course.version || 1) || 1;
+      setEditingCourseVersion(nextVersion);
       setModalFormData({ ...makeFormDefaults(), ...course });
       setModalAlert({ message: '', variant: 'neutral' });
       setIsModalOpen(true);
@@ -377,7 +407,8 @@ export default function Home() {
   const handleCloseModal = useCallback(() => {
     setIsModalOpen(false);
     setIsModalSubmitting(false);
-    setEditingLink(null);
+    setEditingCourseId(null);
+    setEditingCourseVersion(null);
     setModalFormData(makeFormDefaults());
     setModalAlert({ message: '', variant: 'neutral' });
     setModalMode('create');
@@ -395,27 +426,36 @@ export default function Home() {
           pushToast(message, 'error');
           return;
         }
-      } else if (!editingLink) {
-        return;
+      } else {
+        if (!editingCourseId || typeof editingCourseVersion !== 'number') {
+          const message = 'Missing course metadata for update';
+          setModalAlert({ message, variant: 'error' });
+          pushToast(message, 'error');
+          return;
+        }
       }
 
       const isCreate = modalMode === 'create';
       const endpoint = isCreate
         ? `${API_BASE}/courses`
-        : `${API_BASE}/courses/${encodeURIComponent(editingLink ?? '')}`;
+        : `${API_BASE}/courses/${editingCourseId}`;
       const method = isCreate ? 'POST' : 'PUT';
       const actionLabel = isCreate ? 'Creating course…' : 'Updating course…';
       setModalAlert({ message: actionLabel, variant: 'info' });
       pushToast(actionLabel, 'info');
       setIsModalSubmitting(true);
       try {
+        const bodyPayload = isCreate ? payload : { ...payload, version: editingCourseVersion };
         const response = await fetch(endpoint, {
           method,
           headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-          body: JSON.stringify(payload),
+          body: JSON.stringify(bodyPayload),
         });
         if (!response.ok) {
           const detail = await extractErrorMessage(response);
+          if (response.status === 409) {
+            throw new Error(detail || 'Course was updated elsewhere. Please refresh and try again.');
+          }
           throw new Error(detail || 'Request failed');
         }
         await loadCourses({ showToastOnError: false, silent: true });
@@ -430,7 +470,7 @@ export default function Home() {
         setIsModalSubmitting(false);
       }
     },
-    [editingLink, handleCloseModal, loadCourses, modalFormData, modalMode, pushToast]
+    [editingCourseId, editingCourseVersion, handleCloseModal, loadCourses, modalFormData, modalMode, pushToast]
   );
 
   const handleEnrichSubmit = useCallback(
@@ -510,7 +550,7 @@ export default function Home() {
     }
 
     return courses.map((course) => (
-      <tr key={course.link} className="border-b border-slate-200 last:border-none">
+      <tr key={course.id} className="border-b border-slate-200 last:border-none">
         <td className="py-3 text-sm font-medium text-slate-700">{course.provider || '—'}</td>
         <td className="py-3 text-sm">
           {course.link ? (
@@ -553,160 +593,171 @@ export default function Home() {
       : 'Modify the selected course and save your changes.';
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-10 px-6 pb-16 pt-10 text-slate-100">
-      <header>
-        <h1 className="text-3xl font-bold tracking-tight text-slate-100">AI Learning Courses Admin Tool</h1>
-      </header>
-
-      <main className="flex flex-col gap-12">
-        <section className="card">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-semibold text-slate-900">Add New Course</h2>
-              <p className="text-sm text-slate-500">Provide a public course URL and optional details to enrich the record.</p>
-            </div>
+    <div className="flex min-h-screen flex-col text-slate-100">
+      <nav className="border-b border-slate-800 bg-slate-900/90 backdrop-blur">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <span className="text-xl font-semibold tracking-tight sm:text-2xl">AI Learning Courses Admin Tool</span>
+          <div className="flex flex-wrap items-center gap-4 text-sm text-slate-300 sm:justify-end">
+            <a href="#add-course" className="transition hover:text-white">
+              Add Course
+            </a>
+            <a href="#courses" className="transition hover:text-white">
+              Courses
+            </a>
           </div>
-          <form onSubmit={handleEnrichSubmit} className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <label className="field-label md:col-span-2 lg:col-span-1">
-              Course URL
-              <input
-                type="url"
-                name="link"
-                required
-                value={enrichData.link}
-                onChange={handleEnrichChange}
-                className="field-input"
-                placeholder="https://example.com/course"
-              />
-            </label>
-            <label className="field-label">
-              Provider (optional)
-              <input
-                type="text"
-                name="provider"
-                value={enrichData.provider}
-                onChange={handleEnrichChange}
-                className="field-input"
-                placeholder="e.g. Coursera"
-              />
-            </label>
-            <label className="field-label">
-              Course Name (optional)
-              <input
-                type="text"
-                name="courseName"
-                value={enrichData.courseName}
-                onChange={handleEnrichChange}
-                className="field-input"
-                placeholder="e.g. Intro to AI"
-              />
-            </label>
-            <div className="flex items-end">
-              <button type="submit" className="btn-primary" disabled={isEnriching}>
-                {isEnriching ? 'Enriching…' : 'Enrich & Add'}
-              </button>
-            </div>
-          </form>
-          <StatusMessage
-            message={enrichAlert.message}
-            variant={enrichAlert.variant}
-            className="mt-4 text-sm"
-          />
-        </section>
+        </div>
+      </nav>
 
-        <section className="card">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <h2 className="text-xl font-semibold text-slate-900">Existing Courses</h2>
-            <button type="button" className="btn-secondary" onClick={handleRefresh} disabled={isLoading}>
-              {isLoading ? 'Refreshing…' : 'Refresh'}
-            </button>
-          </div>
-          <form
-            onSubmit={handleSearchSubmit}
-            className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:gap-4"
-          >
-            <input
-              type="search"
-              name="course-search"
-              value={searchDraft}
-              onChange={handleSearchInput}
-              className="field-input w-full md:flex-1"
-              placeholder="Search by course name, provider, or platform"
-              aria-label="Search courses"
+      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-10 px-6 pb-16 pt-10">
+        <main className="flex flex-1 flex-col gap-12">
+          <section id="add-course" className="card">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900">Add New Course</h2>
+                <p className="text-sm text-slate-500">Provide a public course URL and optional details to enrich the record.</p>
+              </div>
+            </div>
+            <form onSubmit={handleEnrichSubmit} className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              <label className="field-label md:col-span-2 lg:col-span-1">
+                Course URL
+                <input
+                  type="url"
+                  name="link"
+                  required
+                  value={enrichData.link}
+                  onChange={handleEnrichChange}
+                  className="field-input"
+                  placeholder="https://example.com/course"
+                />
+              </label>
+              <label className="field-label">
+                Provider (optional)
+                <input
+                  type="text"
+                  name="provider"
+                  value={enrichData.provider}
+                  onChange={handleEnrichChange}
+                  className="field-input"
+                  placeholder="e.g. Coursera"
+                />
+              </label>
+              <label className="field-label">
+                Course Name (optional)
+                <input
+                  type="text"
+                  name="courseName"
+                  value={enrichData.courseName}
+                  onChange={handleEnrichChange}
+                  className="field-input"
+                  placeholder="e.g. Intro to AI"
+                />
+              </label>
+              <div className="flex items-end">
+                <button type="submit" className="btn-primary" disabled={isEnriching}>
+                  {isEnriching ? 'Enriching…' : 'Enrich & Add'}
+                </button>
+              </div>
+            </form>
+            <StatusMessage
+              message={enrichAlert.message}
+              variant={enrichAlert.variant}
+              className="mt-4 text-sm"
             />
-            <div className="flex items-center gap-2">
-              <button type="submit" className="btn-secondary" disabled={isLoading}>
-                Search
+          </section>
+
+          <section id="courses" className="card">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <h2 className="text-xl font-semibold text-slate-900">Existing Courses</h2>
+              <button type="button" className="btn-secondary" onClick={handleRefresh} disabled={isLoading}>
+                {isLoading ? 'Refreshing…' : 'Refresh'}
               </button>
+            </div>
+            <form
+              onSubmit={handleSearchSubmit}
+              className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:gap-4"
+            >
+              <input
+                type="search"
+                name="course-search"
+                value={searchDraft}
+                onChange={handleSearchInput}
+                className="field-input w-full md:flex-1"
+                placeholder="Search by course name, provider, or platform"
+                aria-label="Search courses"
+              />
+              <div className="flex items-center gap-2">
+                <button type="submit" className="btn-secondary" disabled={isLoading}>
+                  Search
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={handleClearSearch}
+                  disabled={!searchDraft && !searchTerm}
+                >
+                  Clear
+                </button>
+              </div>
+            </form>
+            <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {filterKeys.map((key) => (
+                <label key={key} className="field-label">
+                  {filterLabels[key]}
+                  <select
+                    className="field-input"
+                    value={filtersState[key]}
+                    onChange={(event) => handleFilterChange(key, event.target.value)}
+                  >
+                    <option value="">All {filterLabels[key]}</option>
+                    {availableFilters[key].map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
               <button
                 type="button"
                 className="btn-secondary"
-                onClick={handleClearSearch}
-                disabled={!searchDraft && !searchTerm}
+                onClick={handleResetFilters}
+                disabled={!hasActiveFilters}
               >
-                Clear
+                Reset Filters
               </button>
             </div>
-          </form>
-          <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-            {filterKeys.map((key) => (
-              <label key={key} className="field-label">
-                {filterLabels[key]}
-                <select
-                  className="field-input"
-                  value={filtersState[key]}
-                  onChange={(event) => handleFilterChange(key, event.target.value)}
-                >
-                  <option value="">All {filterLabels[key]}</option>
-                  {availableFilters[key].map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ))}
-          </div>
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={handleResetFilters}
-              disabled={!hasActiveFilters}
-            >
-              Reset Filters
-            </button>
-          </div>
-          <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
-            <table className="min-w-full divide-y divide-slate-200">
-              <thead className="bg-slate-100">
-                <tr>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">
-                    Provider
-                  </th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">
-                    Course
-                  </th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">
-                    Platform
-                  </th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">
-                    Difficulty
-                  </th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">
-                    Length
-                  </th>
-                  <th scope="col" className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-600">
-                    Action
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 px-4">{tableRows}</tbody>
-            </table>
-          </div>
-          <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="text-sm text-slate-600">
-              {hasResults
+            <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
+              <table className="min-w-full divide-y divide-slate-200">
+                <thead className="bg-slate-100">
+                  <tr>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">
+                      Provider
+                    </th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">
+                      Course
+                    </th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">
+                      Platform
+                    </th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">
+                      Difficulty
+                    </th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">
+                      Length
+                    </th>
+                    <th scope="col" className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-600">
+                      Action
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 px-4">{tableRows}</tbody>
+              </table>
+            </div>
+            <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="text-sm text-slate-600">
+                {hasResults
                 ? `Showing ${startIndex}–${endIndex} of ${pagination.total} courses`
                 : 'No courses to display'}
             </div>
@@ -749,6 +800,7 @@ export default function Home() {
           </div>
         </section>
       </main>
+    </div>
 
       {isModalOpen && (
         <div

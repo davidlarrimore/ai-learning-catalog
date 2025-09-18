@@ -11,7 +11,7 @@ Visit: https://davidlarrimore.github.io/ai-learning-catalog/
 - `index.html` - Main page
 - `styles.css` - Styling
 - `app.js` - Frontend logic
-- `data/courses.json` - Course catalog data
+- `data/courses.json` - Course catalog data (written directly by the backend service)
 
 ## 🚀 Deployment
 

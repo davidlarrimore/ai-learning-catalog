@@ -1,17 +1,19 @@
 """FastAPI application for managing training courses."""
 from __future__ import annotations
 
+import logging
+import sqlite3
 from typing import Any, Dict
-from urllib.parse import unquote
 
 from celery.exceptions import TimeoutError
 from fastapi import FastAPI, HTTPException, Query
+from kombu.exceptions import OperationalError
 from fastapi.middleware.cors import CORSMiddleware
 
-from .course_model import ensure_store
 from .config import get_settings
 from .enrichment import CourseEnricher
-from .repository import CourseRepository
+from .logging_config import setup_logging
+from .repository import CourseRepository, VersionConflictError
 from .schemas import (
     CourseCreate,
     CourseEnrichRequest,
@@ -22,11 +24,16 @@ from .schemas import (
 from .tasks import (
     add_course_task,
     enrich_course_task,
-    list_courses_task,
     update_course_task,
 )
 
+setup_logging()
+
 app = FastAPI(title="Training Processing API", version="0.1.0")
+
+logger = logging.getLogger(__name__)
+
+CONFLICT_DETAIL = "Course link must be unique"
 
 MAX_PAGE_SIZE = 100
 
@@ -37,8 +44,7 @@ def _get_timeout() -> int:
 
 def _get_repo() -> CourseRepository:
     settings = get_settings()
-    ensure_store(settings.courses_path)
-    return CourseRepository(settings.courses_path)
+    return CourseRepository(settings.sqlite_path, settings.courses_path)
 
 
 def _validate_course_payload(payload: dict[str, str]) -> CourseOut:
@@ -65,17 +71,25 @@ def _normalise_filters(**raw_filters: list[str]) -> dict[str, list[str]]:
 def _fallback_create(payload: dict[str, str]) -> CourseOut:
     repo = _get_repo()
     course = repo.add_course(payload)
+    repo.export_to_json(get_settings().courses_path)
     return CourseOut.model_validate(course.model_dump())
 
 
-def _fallback_update(link: str, payload: dict[str, str]) -> CourseOut:
+def _fallback_update(course_id: str, payload: dict[str, Any], *, version: int) -> CourseOut:
     repo = _get_repo()
-    print(f"DEBUG FALLBACK: Updating with link='{link}'")
+    print(f"DEBUG FALLBACK: Updating course_id='{course_id}' with version={version}")
     try:
-        course = repo.update_course("link", link, payload)
+        course = repo.update_course(course_id, payload, expected_version=version)
     except KeyError as exc:
         print(f"DEBUG FALLBACK: KeyError: {exc}")
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except VersionConflictError as exc:
+        print(f"DEBUG FALLBACK: Version conflict: {exc}")
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except sqlite3.IntegrityError as exc:
+        print(f"DEBUG FALLBACK: Integrity error: {exc}")
+        raise HTTPException(status_code=409, detail=CONFLICT_DETAIL) from exc
+    repo.export_to_json(get_settings().courses_path)
     return CourseOut.model_validate(course.model_dump())
 
 
@@ -91,11 +105,29 @@ def _fallback_enrich(payload: dict[str, str]) -> CourseOut:
     )
     repo = _get_repo()
     data = metadata.to_dict()
-    try:
-        course = repo.update_course("link", data["link"], data)
-    except KeyError:
-        course = repo.add_course(data)
-    return CourseOut.model_validate(course.model_dump())
+    course: CourseOut
+    for attempt in range(2):
+        existing = repo.get_course_by_link(data["link"])
+        if existing is None:
+            course_model = repo.add_course(data)
+            course = CourseOut.model_validate(course_model.model_dump())
+            break
+        try:
+            course_model = repo.update_course(
+                existing.id,
+                data,
+                expected_version=existing.version,
+            )
+            course = CourseOut.model_validate(course_model.model_dump())
+            break
+        except VersionConflictError as exc:
+            if attempt == 1:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+            continue
+    else:  # pragma: no cover - defensive
+        raise HTTPException(status_code=409, detail="Failed to update course due to concurrent modification")
+    repo.export_to_json(get_settings().courses_path)
+    return course
 
 
 app.add_middleware(
@@ -138,59 +170,69 @@ def list_courses(
         ),
     }
 
-    async_result = list_courses_task.delay(options)
-    try:
-        payload = async_result.get(timeout=_get_timeout())
-    except TimeoutError:  # pragma: no cover - defensive
-        return _fallback_list(options)
-    return CourseListResponse.model_validate(payload)
+    # Directly query SQLite for read-only requests so course listings return quickly.
+    return _fallback_list(options)
 
 
 @app.post("/courses", response_model=CourseOut, status_code=201)
 def create_course(course: CourseCreate) -> CourseOut:
     payload = course.model_dump()
-    async_result = add_course_task.delay(payload)
+    try:
+        async_result = add_course_task.delay(payload)
+    except OperationalError as exc:  # Broker unavailable
+        logger.warning("Celery broker unreachable, falling back to direct create", exc_info=exc)
+        return _fallback_create(payload)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Celery dispatch failed, falling back to direct create", exc_info=exc)
+        return _fallback_create(payload)
     try:
         data = async_result.get(timeout=_get_timeout())
     except TimeoutError:  # pragma: no cover - defensive
         return _fallback_create(payload)
+    except sqlite3.IntegrityError as exc:
+        raise HTTPException(status_code=409, detail=CONFLICT_DETAIL) from exc
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Celery task failed, falling back to direct create", exc_info=exc)
+        return _fallback_create(payload)
     return _validate_course_payload(data)
 
 
-@app.put("/courses/{course_link:path}", response_model=CourseOut)
-def update_course(course_link: str, update: CourseUpdate) -> CourseOut:
-    """Update a course by its link (URL path parameter)."""
+@app.put("/courses/{course_id}", response_model=CourseOut)
+def update_course(course_id: str, update: CourseUpdate) -> CourseOut:
+    """Update a course by its unique identifier using optimistic concurrency control."""
+
     data = update.model_dump(exclude_unset=True)
+    version = data.pop("version", None)
+    if version is None:
+        raise HTTPException(status_code=400, detail="Version is required for updates")
     if not data:
         raise HTTPException(status_code=400, detail="No fields provided for update")
-    
-    # FastAPI partially decodes path parameters, so we need to reconstruct the full URL
-    # If we see 'https:/' it means 'https://' was sent as 'https%3A%2F%2F' but got partially decoded
-    if course_link.startswith('https:/') and not course_link.startswith('https://'):
-        # Reconstruct the proper URL - FastAPI decoded %2F to / but left %3A as :
-        decoded_link = course_link.replace('https:/', 'https://')
-        print(f"DEBUG API: Fixed partial decode: '{course_link}' -> '{decoded_link}'")
-    elif course_link.startswith('http:/') and not course_link.startswith('http://'):
-        # Handle http URLs too
-        decoded_link = course_link.replace('http:/', 'http://')
-        print(f"DEBUG API: Fixed partial decode: '{course_link}' -> '{decoded_link}'")
-    else:
-        # For other cases, try normal URL decoding
-        decoded_link = unquote(course_link)
-        print(f"DEBUG API: Standard decode: '{course_link}' -> '{decoded_link}'")
-    
-    print(f"DEBUG API: Final decoded link: '{decoded_link}'")
-    
-    async_result = update_course_task.delay(decoded_link, data)
+
+    try:
+        async_result = update_course_task.delay(course_id, version, data)
+    except OperationalError as exc:  # Broker unavailable
+        logger.warning("Celery broker unreachable, falling back to direct update", exc_info=exc)
+        return _fallback_update(course_id, data, version=version)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Celery dispatch failed, falling back to direct update", exc_info=exc)
+        return _fallback_update(course_id, data, version=version)
     try:
         payload = async_result.get(timeout=_get_timeout())
     except TimeoutError:  # pragma: no cover - defensive
         print("DEBUG API: Celery timeout, using fallback")
-        return _fallback_update(decoded_link, data)
+        return _fallback_update(course_id, data, version=version)
     except KeyError as exc:
         print(f"DEBUG API: KeyError from Celery: {exc}")
         raise HTTPException(status_code=404, detail=f"Course not found: {str(exc)}") from exc
-    
+    except VersionConflictError as exc:
+        print(f"DEBUG API: Version conflict from Celery: {exc}")
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except sqlite3.IntegrityError as exc:
+        raise HTTPException(status_code=409, detail=CONFLICT_DETAIL) from exc
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Celery task failed, falling back to direct update", exc_info=exc)
+        return _fallback_update(course_id, data, version=version)
+
     return _validate_course_payload(payload)
 
 
@@ -198,11 +240,23 @@ def update_course(course_link: str, update: CourseUpdate) -> CourseOut:
 def enrich_course(request: CourseEnrichRequest) -> CourseOut:
     data = request.model_dump()
     data["link"] = str(data["link"])
-    async_result = enrich_course_task.delay(data)
+    try:
+        async_result = enrich_course_task.delay(data)
+    except OperationalError as exc:  # Broker unavailable
+        logger.warning("Celery broker unreachable, falling back to direct enrich", exc_info=exc)
+        return _fallback_enrich(data)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Celery dispatch failed, falling back to direct enrich", exc_info=exc)
+        return _fallback_enrich(data)
     try:
         payload = async_result.get(timeout=_get_timeout())
     except TimeoutError:  # pragma: no cover - defensive
         return _fallback_enrich(data)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except sqlite3.IntegrityError as exc:
+        raise HTTPException(status_code=409, detail=CONFLICT_DETAIL) from exc
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Celery task failed, falling back to direct enrich", exc_info=exc)
+        return _fallback_enrich(data)
     return _validate_course_payload(payload)

@@ -4,6 +4,8 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
+from datetime import datetime, timezone
+import uuid
 from pathlib import Path
 from threading import RLock
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
@@ -16,6 +18,10 @@ class Course(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
+    id: str = Field(default_factory=lambda: uuid.uuid4().hex)
+    version: int = Field(default=1, ge=1)
+    date_created: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    last_updated: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     provider: str = Field(default="", alias="Provider")
     link: str = Field(default="", alias="Link")
     course_name: str = Field(default="Unknown", alias="Course Name")
@@ -55,6 +61,13 @@ class Course(BaseModel):
         def norm(data: str, default: str) -> str:
             return data.strip() or default
 
+        if self.date_created.tzinfo is None:
+            self.date_created = self.date_created.replace(tzinfo=timezone.utc)
+        if self.last_updated.tzinfo is None:
+            self.last_updated = self.last_updated.replace(tzinfo=timezone.utc)
+        if self.last_updated < self.date_created:
+            self.last_updated = self.date_created
+
         self.provider = norm(self.provider, "")
         self.link = norm(self.link, "")
         self.course_name = norm(self.course_name, "Unknown")
@@ -76,7 +89,9 @@ def _ensure_path(path: str | Path) -> Path:
     return Path(path).expanduser()
 
 
-DEFAULT_SOURCE_PATH = Path(os.getenv("SOURCE_COURSES_PATH", "data/courses.json")).expanduser()
+DEFAULT_SOURCE_PATH = Path(
+    os.getenv("SOURCE_COURSES_PATH", "docs/data/courses.json")
+).expanduser()
 DEFAULT_WORKING_PATH = Path(os.getenv("WORKING_COURSES_PATH", "working/courses.json")).expanduser()
 
 
@@ -98,6 +113,14 @@ def _resolve(path: Path) -> Path:
 
 def _clone_courses(courses: Sequence[Course]) -> list[Course]:
     return [course.model_copy(deep=True) for course in courses]
+
+
+def course_sort_key(course: Course) -> tuple[str, str, str]:
+    return (
+        (course.provider or "").casefold(),
+        (course.course_name or "").casefold(),
+        (course.link or "").casefold(),
+    )
 
 
 def _read_courses_from_disk(path: Path) -> list[Course]:
@@ -150,11 +173,12 @@ def load_courses(path: str | Path) -> List[Course]:
 def save_courses(path: str | Path, courses: Sequence[Course]) -> None:
     p = ensure_store(path)
     normalised = [c if isinstance(c, Course) else Course.model_validate(c or {}) for c in courses]
-    payload = [course.to_dict() for course in normalised]
+    ordered = sorted(normalised, key=course_sort_key)
+    payload = [course.to_dict() for course in ordered]
     p.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     mtime = p.stat().st_mtime if p.exists() else 0.0
     with _CACHE_LOCK:
-        _STORE_CACHE[p] = _CachedStore(courses=_clone_courses(normalised), mtime=mtime)
+        _STORE_CACHE[p] = _CachedStore(courses=_clone_courses(ordered), mtime=mtime)
 
 
 def append_course(path: str | Path, course: Course) -> None:

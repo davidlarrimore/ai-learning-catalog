@@ -17,10 +17,15 @@ class Settings:
     def __init__(self) -> None:
         base_dir = Path(os.getenv("APP_BASE_DIR", Path(__file__).resolve().parents[2]))
         self.base_dir = base_dir
-        data_path = Path(os.getenv("COURSES_PATH", base_dir / "data" / "courses.json"))
+        data_dir = base_dir / "data"
+        docs_dir = base_dir / "docs"
+        default_courses_path = docs_dir / "data" / "courses.json"
+        data_path = Path(os.getenv("COURSES_PATH", default_courses_path))
+        sqlite_path = Path(os.getenv("SQLITE_PATH", data_dir / "courses.db"))
         self.courses_path = data_path
         self.working_courses_path = data_path
         self.source_courses_path = data_path
+        self.sqlite_path = sqlite_path
         redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
         self.celery_broker_url = os.getenv("CELERY_BROKER_URL", redis_url)
         self.celery_result_backend = os.getenv("CELERY_RESULT_BACKEND", redis_url)

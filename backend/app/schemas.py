@@ -1,6 +1,7 @@
 """Pydantic models for API requests/responses."""
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
@@ -27,6 +28,7 @@ class CourseCreate(CourseBase):
 
 
 class CourseUpdate(BaseModel):
+    version: int = Field(..., ge=1)
     provider: Optional[str] = None
     link: Optional[str] = None
     course_name: Optional[str] = None
@@ -43,7 +45,10 @@ class CourseUpdate(BaseModel):
 
 
 class CourseOut(CourseBase):
-    ...
+    id: str
+    version: int = Field(..., ge=1)
+    date_created: datetime
+    last_updated: datetime
 
 
 class CourseFilters(BaseModel):

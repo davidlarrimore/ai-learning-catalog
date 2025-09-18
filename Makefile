@@ -51,3 +51,6 @@ clean: ## Remove all containers, volumes, and images
 
 status: ## Show status of all services
 	docker compose ps
+
+export-json: ## Export courses from SQLite to courses.json
+	docker compose run --rm backend python -m backend.app.export_courses

@@ -9,7 +9,8 @@ services:
     env_file:
       - .env
     environment:
-      COURSES_PATH: /app/data/courses.json
+      COURSES_PATH: /app/docs/data/courses.json
+      SQLITE_PATH: /app/data/courses.db
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
     volumes:
@@ -17,6 +18,7 @@ services:
     ports:
       - "8000:8000"
     depends_on:
+      - sqlite
       - redis
 
   worker:
@@ -27,12 +29,14 @@ services:
     env_file:
       - .env
     environment:
-      COURSES_PATH: /app/data/courses.json
+      COURSES_PATH: /app/docs/data/courses.json
+      SQLITE_PATH: /app/data/courses.db
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
     volumes:
       - ./:/app
     depends_on:
+      - sqlite
       - redis
 
   frontend:
@@ -54,6 +58,7 @@ services:
       CHOKIDAR_USEPOLLING: "1"
       WATCHPACK_POLLING: "true"
     depends_on:
+      - sqlite
       - backend
     tty: true
     stdin_open: true
@@ -74,6 +79,15 @@ services:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+
+  sqlite:
+    platform: linux/amd64
+    image: nouchka/sqlite3:latest
+    entrypoint: ["/bin/sh", "-c", "tail -f /dev/null"]
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+
 
 volumes:
   frontend-node_modules:

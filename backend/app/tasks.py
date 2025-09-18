@@ -2,46 +2,37 @@
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import unquote
-
-from .course_model import ensure_store
 
 from .celery_app import celery_app
 from .config import get_settings
 from .enrichment import CourseEnricher
-from .repository import CourseRepository
+from .logging_config import setup_logging
+from .repository import CourseRepository, VersionConflictError
 
+
+setup_logging()
 
 def _get_repo() -> CourseRepository:
     settings = get_settings()
-    ensure_store(settings.courses_path)
-    return CourseRepository(settings.courses_path)
+    return CourseRepository(settings.sqlite_path, settings.courses_path)
 
 
 @celery_app.task(name="backend.app.tasks.add_course")
 def add_course_task(payload: dict[str, Any]) -> dict[str, Any]:
     repo = _get_repo()
     course = repo.add_course(payload)
+    export_courses_task.delay()
     return course.model_dump()
 
 
 @celery_app.task(name="backend.app.tasks.update_course")
-def update_course_task(link: str, payload: dict[str, Any]) -> dict[str, Any]:
-    """Update course task with proper URL handling.
-    
-    Args:
-        link: The course link (should be properly decoded by API layer)
-        payload: Dictionary of fields to update
-        
-    Returns:
-        Dictionary representation of the updated course
-        
-    Raises:
-        KeyError: If course not found
-    """
+def update_course_task(course_id: str, version: int, payload: dict[str, Any]) -> dict[str, Any]:
+    """Update an existing course using optimistic concurrency control."""
+
     repo = _get_repo()
-    print(f"DEBUG TASK: Received link='{link}'")
-    course = repo.update_course("link", link, payload)
+    print(f"DEBUG TASK: Received course_id='{course_id}' version={version}")
+    course = repo.update_course(course_id, payload, expected_version=version)
+    export_courses_task.delay()
     return course.model_dump()
 
 
@@ -62,8 +53,29 @@ def enrich_course_task(payload: dict[str, Any]) -> dict[str, Any]:
         course_name=payload.get("course_name"),
     )
     data = metadata.to_dict()
-    try:
-        course = repo.update_course("link", data["link"], data)
-    except KeyError:
-        course = repo.add_course(data)
+    for attempt in range(2):
+        existing = repo.get_course_by_link(data["link"])
+        if existing is None:
+            course = repo.add_course(data)
+            break
+        try:
+            course = repo.update_course(
+                existing.id,
+                data,
+                expected_version=existing.version,
+            )
+            break
+        except VersionConflictError:
+            if attempt == 1:
+                raise
+            continue
+    export_courses_task.delay()
     return course.model_dump()
+
+
+@celery_app.task(name="backend.app.tasks.export_courses")
+def export_courses_task() -> str:
+    settings = get_settings()
+    repo = CourseRepository(settings.sqlite_path, settings.courses_path)
+    repo.export_to_json(settings.courses_path)
+    return str(settings.courses_path)

@@ -66,6 +66,8 @@ Thumbs.db
 
 # Project artifacts
 output.csv
+data/*.db-shm
+data/*.db-wal
 
 
 # Node / Next.js
