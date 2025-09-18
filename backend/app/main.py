@@ -1,17 +1,24 @@
 """FastAPI application for managing training courses."""
 from __future__ import annotations
 
-from celery.exceptions import TimeoutError
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from typing import Any, Dict
 from urllib.parse import unquote
 
-from .course_model import ensure_store
+from celery.exceptions import TimeoutError
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 
+from .course_model import ensure_store
 from .config import get_settings
 from .enrichment import CourseEnricher
 from .repository import CourseRepository
-from .schemas import CourseCreate, CourseEnrichRequest, CourseOut, CourseUpdate
+from .schemas import (
+    CourseCreate,
+    CourseEnrichRequest,
+    CourseListResponse,
+    CourseOut,
+    CourseUpdate,
+)
 from .tasks import (
     add_course_task,
     enrich_course_task,
@@ -20,6 +27,8 @@ from .tasks import (
 )
 
 app = FastAPI(title="Training Processing API", version="0.1.0")
+
+MAX_PAGE_SIZE = 100
 
 
 def _get_timeout() -> int:
@@ -36,12 +45,21 @@ def _validate_course_payload(payload: dict[str, str]) -> CourseOut:
     return CourseOut.model_validate(payload)
 
 
-def _fallback_list() -> list[CourseOut]:
+def _fallback_list(options: Dict[str, Any]) -> CourseListResponse:
     repo = _get_repo()
-    return [
-        CourseOut.model_validate(course.model_dump())
-        for course in repo.list_courses()
-    ]
+    result = repo.query_courses(**options)
+    return CourseListResponse.model_validate(result.as_dict())
+
+
+def _normalise_filters(**raw_filters: list[str]) -> dict[str, list[str]]:
+    filtered: dict[str, list[str]] = {}
+    for field, values in raw_filters.items():
+        if not values:
+            continue
+        cleaned = [value.strip() for value in values if value and value.strip()]
+        if cleaned:
+            filtered[field] = cleaned
+    return filtered
 
 
 def _fallback_create(payload: dict[str, str]) -> CourseOut:
@@ -94,14 +112,38 @@ def healthcheck() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/courses", response_model=list[CourseOut])
-def list_courses() -> list[CourseOut]:
-    async_result = list_courses_task.delay()
+@app.get("/courses", response_model=CourseListResponse)
+def list_courses(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=MAX_PAGE_SIZE),
+    search: str | None = Query(None, min_length=1),
+    provider: list[str] = Query(default_factory=list),
+    platform: list[str] = Query(default_factory=list),
+    difficulty: list[str] = Query(default_factory=list),
+    skill_level: list[str] = Query(default_factory=list),
+    hands_on: list[str] = Query(default_factory=list),
+    track: list[str] = Query(default_factory=list),
+) -> CourseListResponse:
+    options: Dict[str, Any] = {
+        "page": page,
+        "page_size": min(page_size, MAX_PAGE_SIZE),
+        "search": search,
+        "filters": _normalise_filters(
+            provider=provider,
+            platform=platform,
+            difficulty=difficulty,
+            skill_level=skill_level,
+            hands_on=hands_on,
+            track=track,
+        ),
+    }
+
+    async_result = list_courses_task.delay(options)
     try:
         payload = async_result.get(timeout=_get_timeout())
     except TimeoutError:  # pragma: no cover - defensive
-        return _fallback_list()
-    return [CourseOut.model_validate(course) for course in payload]
+        return _fallback_list(options)
+    return CourseListResponse.model_validate(payload)
 
 
 @app.post("/courses", response_model=CourseOut, status_code=201)

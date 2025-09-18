@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Iterable, List, Optional, Sequence
+from threading import RLock
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -71,55 +73,94 @@ class Course(BaseModel):
 
 
 def _ensure_path(path: str | Path) -> Path:
-    return Path(path)
+    return Path(path).expanduser()
 
 
-DEFAULT_SOURCE_PATH = Path(os.getenv("SOURCE_COURSES_PATH", "data/courses.json"))
-DEFAULT_WORKING_PATH = Path(os.getenv("WORKING_COURSES_PATH", "working/courses.json"))
+DEFAULT_SOURCE_PATH = Path(os.getenv("SOURCE_COURSES_PATH", "data/courses.json")).expanduser()
+DEFAULT_WORKING_PATH = Path(os.getenv("WORKING_COURSES_PATH", "working/courses.json")).expanduser()
+
+
+@dataclass
+class _CachedStore:
+    """In-memory snapshot of a course store."""
+
+    courses: list[Course]
+    mtime: float
+
+
+_CACHE_LOCK = RLock()
+_STORE_CACHE: Dict[Path, _CachedStore] = {}
+
+
+def _resolve(path: Path) -> Path:
+    return path.resolve()
+
+
+def _clone_courses(courses: Sequence[Course]) -> list[Course]:
+    return [course.model_copy(deep=True) for course in courses]
+
+
+def _read_courses_from_disk(path: Path) -> list[Course]:
+    try:
+        with path.open(encoding="utf-8") as fh:
+            raw = json.load(fh) or []
+    except json.JSONDecodeError:
+        raw = []
+    if not isinstance(raw, list):
+        raise ValueError(f"Expected a list of courses in {path}, got {type(raw).__name__}")
+    return [Course.model_validate(item or {}) for item in raw]
+
+
+def _get_store(path: Path) -> _CachedStore:
+    resolved = _resolve(path)
+    with _CACHE_LOCK:
+        cached = _STORE_CACHE.get(resolved)
+        mtime = resolved.stat().st_mtime if resolved.exists() else 0.0
+        if cached is None or cached.mtime < mtime:
+            courses = _read_courses_from_disk(resolved) if resolved.exists() else []
+            cached = _CachedStore(courses=courses, mtime=mtime)
+            _STORE_CACHE[resolved] = cached
+        return cached
 
 
 def ensure_store(path: str | Path) -> Path:
-    p = _ensure_path(path)
+    p = _resolve(_ensure_path(path))
     p.parent.mkdir(parents=True, exist_ok=True)
     if not p.exists():
         p.write_text("[]\n", encoding="utf-8")
+        with _CACHE_LOCK:
+            _STORE_CACHE[p] = _CachedStore(courses=[], mtime=p.stat().st_mtime)
     return p
 
 
 def clear_store(path: str | Path) -> None:
-    p = _ensure_path(path)
+    p = _resolve(_ensure_path(path))
     if p.exists():
         p.unlink()
+    with _CACHE_LOCK:
+        _STORE_CACHE.pop(p, None)
 
 
 def load_courses(path: str | Path) -> List[Course]:
-    p = _ensure_path(path)
-    if not p.exists():
-        return []
-    with p.open(encoding="utf-8") as fh:
-        raw = json.load(fh) or []
-    if not isinstance(raw, list):
-        raise ValueError(f"Expected a list of courses in {p}, got {type(raw).__name__}")
-    return [Course.model_validate(item or {}) for item in raw]
+    p = ensure_store(path)
+    store = _get_store(p)
+    return _clone_courses(store.courses)
 
 
 def save_courses(path: str | Path, courses: Sequence[Course]) -> None:
     p = ensure_store(path)
-    payload = [c.to_dict() for c in courses]
+    normalised = [c if isinstance(c, Course) else Course.model_validate(c or {}) for c in courses]
+    payload = [course.to_dict() for course in normalised]
     p.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    mtime = p.stat().st_mtime if p.exists() else 0.0
+    with _CACHE_LOCK:
+        _STORE_CACHE[p] = _CachedStore(courses=_clone_courses(normalised), mtime=mtime)
 
 
 def append_course(path: str | Path, course: Course) -> None:
-    p = ensure_store(path)
-    try:
-        with p.open(encoding="utf-8") as fh:
-            data = json.load(fh)
-            if not isinstance(data, list):
-                data = []
-    except json.JSONDecodeError:
-        data = []
-    data.append(course.to_dict())
-    p.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    existing = load_courses(path)
+    existing.append(course if isinstance(course, Course) else Course.model_validate(course or {}))
+    save_courses(path, existing)
 
 
 def load_processed_links(path: str | Path) -> set[str]:

@@ -46,9 +46,10 @@ def update_course_task(link: str, payload: dict[str, Any]) -> dict[str, Any]:
 
 
 @celery_app.task(name="backend.app.tasks.list_courses")
-def list_courses_task() -> list[dict[str, Any]]:
+def list_courses_task(options: dict[str, Any] | None = None) -> dict[str, Any]:
     repo = _get_repo()
-    return [course.model_dump() for course in repo.list_courses()]
+    result = repo.query_courses(**(options or {}))
+    return result.as_dict()
 
 
 @celery_app.task(name="backend.app.tasks.enrich_course")

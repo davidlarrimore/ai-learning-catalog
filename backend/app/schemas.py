@@ -46,6 +46,28 @@ class CourseOut(CourseBase):
     ...
 
 
+class CourseFilters(BaseModel):
+    provider: list[str] = Field(default_factory=list)
+    platform: list[str] = Field(default_factory=list)
+    difficulty: list[str] = Field(default_factory=list)
+    skill_level: list[str] = Field(default_factory=list, alias="skillLevel")
+    hands_on: list[str] = Field(default_factory=list, alias="handsOn")
+    track: list[str] = Field(default_factory=list)
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class CourseListResponse(BaseModel):
+    items: list[CourseOut]
+    total: int
+    page: int
+    page_size: int = Field(alias="pageSize")
+    total_pages: int = Field(alias="totalPages")
+    available_filters: CourseFilters = Field(default_factory=CourseFilters, alias="availableFilters")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class CourseEnrichRequest(BaseModel):
     link: HttpUrl
     provider: Optional[str] = None

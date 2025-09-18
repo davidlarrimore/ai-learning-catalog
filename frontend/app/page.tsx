@@ -34,6 +34,73 @@ interface LoadOptions {
   silent?: boolean;
 }
 
+const filterKeys = ['provider', 'platform', 'difficulty', 'skillLevel', 'handsOn', 'track'] as const;
+type FilterKey = (typeof filterKeys)[number];
+
+type AvailableFilters = Record<FilterKey, string[]>;
+type FilterState = Record<FilterKey, string>;
+
+type CourseListResponse = {
+  items: Course[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  availableFilters: Partial<AvailableFilters>;
+};
+
+type PaginationState = {
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  total: number;
+};
+
+const filterLabels: Record<FilterKey, string> = {
+  provider: 'Provider',
+  platform: 'Platform',
+  difficulty: 'Difficulty',
+  skillLevel: 'Skill Level',
+  handsOn: 'Hands On',
+  track: 'Track',
+};
+
+const filterParamMap: Record<FilterKey, string> = {
+  provider: 'provider',
+  platform: 'platform',
+  difficulty: 'difficulty',
+  skillLevel: 'skill_level',
+  handsOn: 'hands_on',
+  track: 'track',
+};
+
+const makeEmptyFilterState = (): FilterState => ({
+  provider: '',
+  platform: '',
+  difficulty: '',
+  skillLevel: '',
+  handsOn: '',
+  track: '',
+});
+
+const makeEmptyAvailableFilters = (): AvailableFilters => ({
+  provider: [],
+  platform: [],
+  difficulty: [],
+  skillLevel: [],
+  handsOn: [],
+  track: [],
+});
+
+const makeDefaultPagination = (): PaginationState => ({
+  page: 1,
+  pageSize: 25,
+  totalPages: 0,
+  total: 0,
+});
+
+const pageSizeOptions = [10, 25, 50, 100];
+
 interface FieldConfig {
   name: keyof CourseFormValues;
   label: string;
@@ -109,15 +176,24 @@ async function extractErrorMessage(response: Response): Promise<string> {
 
 export default function Home() {
   const [courses, setCourses] = useState<Course[]>([]);
-  const [formData, setFormData] = useState<CourseFormValues>(makeFormDefaults);
   const [enrichData, setEnrichData] = useState<EnrichFormValues>(makeEnrichDefaults);
   const [editingLink, setEditingLink] = useState<string | null>(null);
-  const [alert, setAlert] = useState<AlertState>(defaultAlert);
+  const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
+  const [modalFormData, setModalFormData] = useState<CourseFormValues>(makeFormDefaults);
+  const [modalAlert, setModalAlert] = useState<AlertState>(defaultAlert);
   const [enrichAlert, setEnrichAlert] = useState<AlertState>(defaultAlert);
   const [isLoading, setIsLoading] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEnriching, setIsEnriching] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isModalSubmitting, setIsModalSubmitting] = useState(false);
   const [toasts, setToasts] = useState<ToastDescriptor[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchDraft, setSearchDraft] = useState('');
+  const [filtersState, setFiltersState] = useState<FilterState>(makeEmptyFilterState);
+  const [availableFilters, setAvailableFilters] = useState<AvailableFilters>(makeEmptyAvailableFilters);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [pagination, setPagination] = useState<PaginationState>(makeDefaultPagination);
 
   const pushToast = useCallback(
     (message: ToastDescriptor['message'], variant: ToastVariant = 'info') => {
@@ -134,37 +210,58 @@ export default function Home() {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
   }, []);
 
-  const resetForm = useCallback(() => {
-    setFormData(makeFormDefaults());
-    setEditingLink(null);
-  }, []);
-
   const loadCourses = useCallback(
     async ({ showToastOnError = true, silent = false }: LoadOptions = {}) => {
       setIsLoading(true);
-      if (!silent) {
-        setAlert({ message: 'Loading courses…', variant: 'info' });
-      }
       try {
-        const response = await fetch(`${API_BASE}/courses`, {
+        const params = new URLSearchParams();
+        params.set('page', String(page));
+        params.set('page_size', String(pageSize));
+        const trimmedSearch = searchTerm.trim();
+        if (trimmedSearch) {
+          params.set('search', trimmedSearch);
+        }
+        filterKeys.forEach((key) => {
+          const value = filtersState[key].trim();
+          if (value) {
+            params.append(filterParamMap[key], value);
+          }
+        });
+
+        const queryString = params.toString();
+        const response = await fetch(`${API_BASE}/courses${queryString ? `?${queryString}` : ''}`, {
           headers: { 'Accept': 'application/json' },
         });
         if (!response.ok) {
           throw new Error('Failed to load courses');
         }
-        const payload = (await response.json()) as Course[];
-        const normalised = Array.isArray(payload)
-          ? payload.map((course) => ({ ...makeFormDefaults(), ...course }))
+        const payload = (await response.json()) as CourseListResponse;
+        const normalised = Array.isArray(payload.items)
+          ? payload.items.map((course) => ({ ...makeFormDefaults(), ...course }))
           : [];
         setCourses(normalised);
-        if (!silent) {
-          setAlert({ message: 'Courses loaded', variant: 'success' });
+        const nextAvailableFilters = makeEmptyAvailableFilters();
+        filterKeys.forEach((key) => {
+          const values = payload.availableFilters?.[key];
+          nextAvailableFilters[key] = Array.isArray(values) ? values : [];
+        });
+        setAvailableFilters(nextAvailableFilters);
+        setPagination({
+          page: payload.page,
+          pageSize: payload.pageSize,
+          totalPages: payload.totalPages,
+          total: payload.total,
+        });
+        if (payload.page !== page) {
+          setPage(payload.page);
+        }
+        if (payload.pageSize !== pageSize) {
+          setPageSize(payload.pageSize);
         }
         return true;
       } catch (error) {
         console.error(error);
         const message = error instanceof Error ? error.message : 'Failed to load courses';
-        setAlert({ message, variant: 'error' });
         if (showToastOnError) {
           pushToast(message, 'error');
         }
@@ -173,11 +270,11 @@ export default function Home() {
         setIsLoading(false);
       }
     },
-    [pushToast]
+    [filtersState, page, pageSize, pushToast, searchTerm]
   );
 
   useEffect(() => {
-    void loadCourses({ showToastOnError: false });
+    void loadCourses({ showToastOnError: false, silent: true });
   }, [loadCourses]);
 
   useEffect(() => {
@@ -188,37 +285,137 @@ export default function Home() {
     return () => window.removeEventListener('focus', handleFocus);
   }, [loadCourses]);
 
-  const handleCourseChange = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      const { name, value } = event.target;
-      setFormData((prev) => ({ ...prev, [name as keyof CourseFormValues]: value }));
-    },
-    []
-  );
-
   const handleEnrichChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = event.target;
     setEnrichData((prev) => ({ ...prev, [name as keyof EnrichFormValues]: value }));
   }, []);
 
-  const handleSubmit = useCallback(
-    async (event: React.FormEvent<HTMLFormElement>) => {
+  const startEditing = useCallback(
+    (course: Course) => {
+      setModalMode('edit');
+      setEditingLink(course.link);
+      setModalFormData({ ...makeFormDefaults(), ...course });
+      setModalAlert({ message: '', variant: 'neutral' });
+      setIsModalOpen(true);
+      pushToast(`Editing ${course.course_name}`, 'info');
+    },
+    [pushToast]
+  );
+
+  const handleRefresh = useCallback(() => {
+    void loadCourses();
+  }, [loadCourses]);
+
+  const handleSearchInput = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchDraft(event.target.value);
+  }, []);
+
+  const handleSearchSubmit = useCallback(
+    (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();
-      if (!formData.link || !formData.course_name) {
-        setAlert({ message: 'Link and Course Name are required', variant: 'error' });
-        pushToast('Link and Course Name are required', 'error');
+      const nextValue = searchDraft.trim();
+      setPage(1);
+      setSearchTerm(nextValue);
+    },
+    [searchDraft]
+  );
+
+  const handleClearSearch = useCallback(() => {
+    if (!searchDraft && !searchTerm) {
+      return;
+    }
+    setSearchDraft('');
+    setSearchTerm('');
+    setPage(1);
+  }, [searchDraft, searchTerm]);
+
+  const handleFilterChange = useCallback((key: FilterKey, value: string) => {
+    let didChange = false;
+    setFiltersState((prev) => {
+      if (prev[key] === value) {
+        return prev;
+      }
+      didChange = true;
+      return { ...prev, [key]: value };
+    });
+    if (didChange) {
+      setPage(1);
+    }
+  }, []);
+
+  const handleResetFilters = useCallback(() => {
+    setFiltersState(makeEmptyFilterState());
+    setPage(1);
+  }, []);
+
+  const handlePreviousPage = useCallback(() => {
+    if (pagination.page <= 1) {
+      return;
+    }
+    setPage(pagination.page - 1);
+  }, [pagination.page]);
+
+  const handleNextPage = useCallback(() => {
+    if (!pagination.totalPages || pagination.page >= pagination.totalPages) {
+      return;
+    }
+    setPage(pagination.page + 1);
+  }, [pagination.page, pagination.totalPages]);
+
+  const handlePageSizeChange = useCallback(
+    (event: React.ChangeEvent<HTMLSelectElement>) => {
+      const nextSize = Number(event.target.value) || pageSizeOptions[0];
+      if (nextSize === pageSize) {
         return;
       }
-      const payload: CourseFormValues = { ...formData };
-      const method = editingLink ? 'PUT' : 'POST';
-      const endpoint = editingLink
-        ? `${API_BASE}/courses/${encodeURIComponent(editingLink)}`
-        : `${API_BASE}/courses`;
+      setPageSize(nextSize);
+      setPage(1);
+    },
+    [pageSize]
+  );
 
-      const actionLabel = editingLink ? 'Updating course…' : 'Creating course…';
-      setAlert({ message: actionLabel, variant: 'info' });
+  const handleModalChange = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      const { name, value } = event.target;
+      setModalFormData((prev) => ({ ...prev, [name as keyof CourseFormValues]: value }));
+    },
+    []
+  );
+
+  const handleCloseModal = useCallback(() => {
+    setIsModalOpen(false);
+    setIsModalSubmitting(false);
+    setEditingLink(null);
+    setModalFormData(makeFormDefaults());
+    setModalAlert({ message: '', variant: 'neutral' });
+    setModalMode('create');
+  }, []);
+
+  const handleModalSubmit = useCallback(
+    async (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const payload: CourseFormValues = { ...modalFormData };
+
+      if (modalMode === 'create') {
+        if (!payload.link || !payload.course_name) {
+          const message = 'Link and Course Name are required';
+          setModalAlert({ message, variant: 'error' });
+          pushToast(message, 'error');
+          return;
+        }
+      } else if (!editingLink) {
+        return;
+      }
+
+      const isCreate = modalMode === 'create';
+      const endpoint = isCreate
+        ? `${API_BASE}/courses`
+        : `${API_BASE}/courses/${encodeURIComponent(editingLink ?? '')}`;
+      const method = isCreate ? 'POST' : 'PUT';
+      const actionLabel = isCreate ? 'Creating course…' : 'Updating course…';
+      setModalAlert({ message: actionLabel, variant: 'info' });
       pushToast(actionLabel, 'info');
-      setIsSubmitting(true);
+      setIsModalSubmitting(true);
       try {
         const response = await fetch(endpoint, {
           method,
@@ -230,40 +427,19 @@ export default function Home() {
           throw new Error(detail || 'Request failed');
         }
         await loadCourses({ showToastOnError: false, silent: true });
-        resetForm();
-        setAlert({ message: 'Saved successfully', variant: 'success' });
-        pushToast('Course saved', 'success');
+        pushToast(isCreate ? 'Course added' : 'Course updated', 'success');
+        handleCloseModal();
       } catch (error) {
         console.error(error);
-        const message = error instanceof Error ? error.message : 'Failed to save course';
-        setAlert({ message, variant: 'error' });
+        const message = error instanceof Error ? error.message : isCreate ? 'Failed to create course' : 'Failed to update course';
+        setModalAlert({ message, variant: 'error' });
         pushToast(message, 'error');
       } finally {
-        setIsSubmitting(false);
+        setIsModalSubmitting(false);
       }
     },
-    [editingLink, formData, loadCourses, pushToast, resetForm]
+    [editingLink, handleCloseModal, loadCourses, modalFormData, modalMode, pushToast]
   );
-
-  const handleCancelEdit = useCallback(() => {
-    resetForm();
-    setAlert({ message: 'Edit cancelled', variant: 'info' });
-    pushToast('Edit cancelled', 'info');
-  }, [pushToast, resetForm]);
-
-  const startEditing = useCallback(
-    (course: Course) => {
-      setEditingLink(course.link);
-      setFormData({ ...makeFormDefaults(), ...course });
-      setAlert({ message: `Editing ${course.course_name}`, variant: 'success' });
-      pushToast(`Editing ${course.course_name}`, 'success');
-    },
-    [pushToast]
-  );
-
-  const handleRefresh = useCallback(() => {
-    void loadCourses();
-  }, [loadCourses]);
 
   const handleEnrichSubmit = useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
@@ -313,15 +489,29 @@ export default function Home() {
     [enrichData, loadCourses, pushToast]
   );
 
-  const activeFormTitle = editingLink ? 'Update Course' : 'Add Course';
-  const submitLabel = editingLink ? 'Update' : 'Save';
+  const hasActiveFilters = useMemo(() => {
+    return filterKeys.some((key) => filtersState[key].trim());
+  }, [filtersState]);
 
   const tableRows = useMemo(() => {
+    if (isLoading) {
+      return (
+        <tr>
+          <td colSpan={6} className="py-6 text-center text-sm text-slate-500">
+            <span className="inline-flex items-center justify-center gap-2" role="status">
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-blue-500" aria-hidden="true" />
+              Loading courses…
+            </span>
+          </td>
+        </tr>
+      );
+    }
+
     if (!courses.length) {
       return (
         <tr>
           <td colSpan={6} className="py-6 text-center text-sm text-slate-500">
-            No courses found yet.
+            {searchTerm || hasActiveFilters ? 'No courses match your search or filters.' : 'No courses found yet.'}
           </td>
         </tr>
       );
@@ -353,20 +543,35 @@ export default function Home() {
         </td>
       </tr>
     ));
-  }, [courses, startEditing]);
+  }, [courses, hasActiveFilters, isLoading, searchTerm, startEditing]);
+
+  const hasResults = pagination.total > 0;
+  const startIndex = hasResults ? (pagination.page - 1) * pagination.pageSize + 1 : 0;
+  const endIndex = hasResults ? Math.min(pagination.total, startIndex + courses.length - 1) : 0;
+  const totalPagesDisplay = hasResults ? Math.max(pagination.totalPages, 1) : 0;
+  const currentPageDisplay = hasResults ? pagination.page : 0;
+  const disablePrevious = !hasResults || pagination.page <= 1 || isLoading;
+  const disableNext =
+    !hasResults || !pagination.totalPages || pagination.page >= pagination.totalPages || isLoading;
+
+  const modalTitle = modalMode === 'create' ? 'Add Course' : 'Update Course';
+  const modalDescription =
+    modalMode === 'create'
+      ? 'Create a course manually by completing the fields below.'
+      : 'Modify the selected course and save your changes.';
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-10 px-6 pb-16 pt-10">
+    <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-10 px-6 pb-16 pt-10 text-slate-100">
       <header>
-        <h1 className="text-3xl font-bold tracking-tight text-slate-900">Training Courses</h1>
+        <h1 className="text-3xl font-bold tracking-tight text-slate-100">AI Learning Courses Admin Tool</h1>
       </header>
 
       <main className="flex flex-col gap-12">
         <section className="card">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-xl font-semibold text-slate-900">Enrich From Course URL</h2>
-              <p className="text-sm text-slate-500">Add a course by providing its public URL and optional metadata.</p>
+              <h2 className="text-xl font-semibold text-slate-900">Add New Course</h2>
+              <p className="text-sm text-slate-500">Provide a public course URL and optional details to enrich the record.</p>
             </div>
           </div>
           <form onSubmit={handleEnrichSubmit} className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -418,62 +623,66 @@ export default function Home() {
         </section>
 
         <section className="card">
-          <div className="flex flex-col gap-2">
-            <h2 className="text-xl font-semibold text-slate-900" id="course-form-heading">
-              {activeFormTitle}
-            </h2>
-            <p className="text-sm text-slate-500">
-              Fill in course details or update an existing entry.
-            </p>
-          </div>
-          <form onSubmit={handleSubmit} className="mt-6 space-y-6" aria-labelledby="course-form-heading">
-            <div className="grid gap-4 md:grid-cols-2">
-              {courseFieldConfig.map((field) => (
-                <label key={field.name} className="field-label">
-                  {field.label}
-                  {field.component === 'textarea' ? (
-                    <textarea
-                      name={field.name}
-                      value={formData[field.name] ?? ''}
-                      onChange={handleCourseChange}
-                      className="field-input min-h-[90px]"
-                      rows={field.rows ?? 3}
-                    />
-                  ) : (
-                    <input
-                      type={field.type ?? 'text'}
-                      name={field.name}
-                      value={formData[field.name] ?? ''}
-                      onChange={handleCourseChange}
-                      className="field-input"
-                      required={field.required}
-                    />
-                  )}
-                </label>
-              ))}
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <button type="submit" className="btn-primary" disabled={isSubmitting}>
-                {isSubmitting ? `${submitLabel}…` : submitLabel}
-              </button>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={handleCancelEdit}
-                disabled={!editingLink || isSubmitting}
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-          <StatusMessage message={alert.message} variant={alert.variant} className="mt-4 text-sm" />
-        </section>
-
-        <section className="card">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <h2 className="text-xl font-semibold text-slate-900">Existing Courses</h2>
             <button type="button" className="btn-secondary" onClick={handleRefresh} disabled={isLoading}>
               {isLoading ? 'Refreshing…' : 'Refresh'}
+            </button>
+          </div>
+          <form
+            onSubmit={handleSearchSubmit}
+            className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:gap-4"
+          >
+            <input
+              type="search"
+              name="course-search"
+              value={searchDraft}
+              onChange={handleSearchInput}
+              className="field-input w-full md:flex-1"
+              placeholder="Search by course name, provider, or platform"
+              aria-label="Search courses"
+            />
+            <div className="flex items-center gap-2">
+              <button type="submit" className="btn-secondary" disabled={isLoading}>
+                Search
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={handleClearSearch}
+                disabled={!searchDraft && !searchTerm}
+              >
+                Clear
+              </button>
+            </div>
+          </form>
+          <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+            {filterKeys.map((key) => (
+              <label key={key} className="field-label">
+                {filterLabels[key]}
+                <select
+                  className="field-input"
+                  value={filtersState[key]}
+                  onChange={(event) => handleFilterChange(key, event.target.value)}
+                >
+                  <option value="">All {filterLabels[key]}</option>
+                  {availableFilters[key].map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={handleResetFilters}
+              disabled={!hasActiveFilters}
+            >
+              Reset Filters
             </button>
           </div>
           <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
@@ -503,8 +712,120 @@ export default function Home() {
               <tbody className="divide-y divide-slate-200 px-4">{tableRows}</tbody>
             </table>
           </div>
+          <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="text-sm text-slate-600">
+              {hasResults
+                ? `Showing ${startIndex}–${endIndex} of ${pagination.total} courses`
+                : 'No courses to display'}
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={handlePreviousPage}
+                disabled={disablePrevious}
+              >
+                Previous
+              </button>
+              <span className="text-sm text-slate-600">
+                {hasResults ? `Page ${currentPageDisplay} of ${totalPagesDisplay}` : 'Page 0 of 0'}
+              </span>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={handleNextPage}
+                disabled={disableNext}
+              >
+                Next
+              </button>
+              <label className="field-label w-32">
+                Per page
+                <select
+                  className="field-input"
+                  value={pageSize}
+                  onChange={handlePageSizeChange}
+                  disabled={isLoading}
+                >
+                  {pageSizeOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </div>
         </section>
       </main>
+
+      {isModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="course-modal-title"
+        >
+          <div className="w-full max-w-3xl rounded-2xl bg-white p-6 shadow-xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900" id="course-modal-title">
+                  {modalTitle}
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">{modalDescription}</p>
+              </div>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={handleCloseModal}
+                disabled={isModalSubmitting}
+              >
+                Close
+              </button>
+            </div>
+            <form onSubmit={handleModalSubmit} className="mt-6 space-y-6">
+              <div className="grid gap-4 md:grid-cols-2">
+                {courseFieldConfig.map((field) => (
+                  <label key={field.name} className="field-label">
+                    {field.label}
+                    {field.component === 'textarea' ? (
+                      <textarea
+                        name={field.name}
+                        value={modalFormData[field.name] ?? ''}
+                        onChange={handleModalChange}
+                        className="field-input min-h-[90px]"
+                        rows={field.rows ?? 3}
+                      />
+                    ) : (
+                      <input
+                        type={field.type ?? 'text'}
+                        name={field.name}
+                        value={modalFormData[field.name] ?? ''}
+                        onChange={handleModalChange}
+                        className="field-input"
+                        required={field.required}
+                      />
+                    )}
+                  </label>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <button type="submit" className="btn-primary" disabled={isModalSubmitting}>
+                  {isModalSubmitting ? 'Saving…' : modalMode === 'create' ? 'Add Course' : 'Save changes'}
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={handleCloseModal}
+                  disabled={isModalSubmitting}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+            <StatusMessage message={modalAlert.message} variant={modalAlert.variant} className="mt-4 text-sm" />
+          </div>
+        </div>
+      )}
 
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
     </div>
