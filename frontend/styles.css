@@ -1,0 +1,172 @@
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  line-height: 1.5;
+}
+
+body {
+  margin: 0;
+  padding: 0 1.5rem 3rem;
+  max-width: 1200px;
+  margin-inline: auto;
+}
+
+#toast-container {
+  position: fixed;
+  top: 1.5rem;
+  right: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  z-index: 1000;
+}
+
+.toast {
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  background: rgba(60, 64, 67, 0.92);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  min-width: 220px;
+  font-size: 0.9rem;
+  animation: fade-in 0.2s ease-out;
+}
+
+.toast.alert-success {
+  background: #137333;
+}
+
+.toast.alert-error {
+  background: #d93025;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+header {
+  padding: 1.5rem 0 0.5rem;
+}
+
+h1,
+ h2 {
+  margin: 0 0 0.75rem;
+}
+
+.enrich-section {
+  margin-bottom: 2rem;
+  padding: 1rem;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.enrich-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  align-items: end;
+}
+
+.enrich-form button {
+  justify-self: start;
+}
+
+form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 600;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+textarea,
+ input {
+  padding: 0.5rem;
+  font-size: 0.95rem;
+  border: 1px solid #bbb;
+  border-radius: 6px;
+}
+
+.actions {
+  display: flex;
+  gap: 0.75rem;
+  padding-top: 1rem;
+}
+
+button {
+  cursor: pointer;
+  border-radius: 6px;
+  border: none;
+  padding: 0.6rem 1.2rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  background: #0077ff;
+  color: white;
+}
+
+button.secondary {
+  background: transparent;
+  border: 1px solid #ccc;
+  color: inherit;
+}
+
+button.hidden {
+  display: none;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 2rem;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+
+th,
+ td {
+  border-bottom: 1px solid #ddd;
+  padding: 0.6rem;
+  text-align: left;
+}
+
+td a {
+  color: inherit;
+}
+
+#alert {
+  min-height: 1.5rem;
+  margin-top: 0.75rem;
+  font-weight: 600;
+}
+
+#enrich-alert {
+  min-height: 1.5rem;
+  margin-top: 0.75rem;
+  font-weight: 600;
+}
+
+.alert-error {
+  color: #d93025;
+}
+
+.alert-success {
+  color: #137333;
+}

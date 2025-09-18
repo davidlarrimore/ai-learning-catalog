@@ -34,7 +34,7 @@ interface LoadOptions {
   silent?: boolean;
 }
 
-const filterKeys = ['provider', 'platform', 'difficulty', 'skillLevel', 'handsOn', 'track'] as const;
+const filterKeys = ['provider', 'difficulty', 'skillLevel', 'track'] as const;
 type FilterKey = (typeof filterKeys)[number];
 
 type AvailableFilters = Record<FilterKey, string[]>;
@@ -58,37 +58,29 @@ type PaginationState = {
 
 const filterLabels: Record<FilterKey, string> = {
   provider: 'Provider',
-  platform: 'Platform',
   difficulty: 'Difficulty',
   skillLevel: 'Skill Level',
-  handsOn: 'Hands On',
   track: 'Track',
 };
 
 const filterParamMap: Record<FilterKey, string> = {
   provider: 'provider',
-  platform: 'platform',
   difficulty: 'difficulty',
   skillLevel: 'skill_level',
-  handsOn: 'hands_on',
   track: 'track',
 };
 
 const makeEmptyFilterState = (): FilterState => ({
   provider: '',
-  platform: '',
   difficulty: '',
   skillLevel: '',
-  handsOn: '',
   track: '',
 });
 
 const makeEmptyAvailableFilters = (): AvailableFilters => ({
   provider: [],
-  platform: [],
   difficulty: [],
   skillLevel: [],
-  handsOn: [],
   track: [],
 });
 
