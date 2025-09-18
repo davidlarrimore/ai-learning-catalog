@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from typing import Any, Optional
 
@@ -10,6 +11,12 @@ from bs4 import BeautifulSoup
 from openai import OpenAI
 
 from .config import get_settings
+from .logging_config import setup_logging
+
+
+setup_logging()
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -82,6 +89,7 @@ class CourseEnricher:
         provider: Optional[str] = None,
         course_name: Optional[str] = None,
     ) -> CourseMetadata:
+        logger.info("Starting enrichment for %s", link)
         page_text = self._fetch_text(link)
         payload = self._call_openai(
             link=link,
@@ -94,15 +102,18 @@ class CourseEnricher:
             payload.setdefault("provider", provider)
         if course_name:
             payload.setdefault("course_name", course_name)
+        logger.info("Completed enrichment for %s", link)
         return CourseMetadata.from_dict(payload)
 
     def _fetch_text(self, link: str) -> str:
         """Fetch and condense the course page for prompting."""
 
         try:
+            logger.debug("Fetching course page %s", link)
             response = httpx.get(link, follow_redirects=True, timeout=self.timeout)
             response.raise_for_status()
         except Exception as exc:  # pragma: no cover - network variability
+            logger.error("Failed to fetch course page %s: %s", link, exc)
             raise RuntimeError(f"Failed to fetch course page: {exc}") from exc
 
         soup = BeautifulSoup(response.text, "html.parser")
@@ -150,4 +161,5 @@ class CourseEnricher:
                 raise ValueError("Expected a JSON object")
             return data
         except Exception as exc:  # pragma: no cover - defensive
+            logger.error("Failed to parse OpenAI response for %s: %s", link, exc)
             raise RuntimeError(f"Failed to parse OpenAI response: {exc}") from exc

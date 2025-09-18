@@ -9,7 +9,11 @@ from .repository import CourseRepository
 
 def export_courses() -> Path:
     settings = get_settings()
-    repo = CourseRepository(settings.sqlite_path, settings.courses_path)
+    repo = CourseRepository(
+        settings.sqlite_path,
+        settings.courses_path,
+        redis_url=settings.redis_url,
+    )
     repo.export_to_json(settings.courses_path)
     return settings.courses_path
 

@@ -2397,6 +2397,23 @@
     "Evidence of Completion": "Submit 2-3 sentence reflection Form"
   },
   {
+    "id": "8edd3d18834b4b0f877f87b10868094c",
+    "version": 2,
+    "date_created": "2025-09-18T20:27:17.494545Z",
+    "last_updated": "2025-09-18T20:43:41.442656Z",
+    "Provider": "LangChain Academy",
+    "Link": "https://academy.langchain.com/courses/deep-agents-with-langgraph",
+    "Course Name": "Deep Agents with LangGraph",
+    "Summary": "Learn how to build a deep research agent using LangGraph: design multi-agent systems, incorporate Model Context Protocol (MCP), handle scoping, supervisor agents, and evaluate with LangSmith.",
+    "Track": "Technical Skills • RAG • Machine Learning",
+    "Platform": "LangGraph / LangChain / LangSmith",
+    "Hands On": "Yes — includes video lessons + project-style modules with hands-on components",
+    "Skill Level": "Intermediate",
+    "Difficulty": "High",
+    "Length": "1 hour of video content",
+    "Evidence of Completion": "Certificate"
+  },
+  {
     "id": "5725377dbdfd5321a82fb03c7d447854",
     "version": 1,
     "date_created": "2025-09-18T01:55:26.058057Z",

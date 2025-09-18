@@ -14,5 +14,6 @@ celery_app = Celery(
     backend=settings.celery_result_backend,
 )
 
+celery_app.conf.task_default_queue = "courses"
 celery_app.conf.task_routes = {"backend.app.tasks.*": {"queue": "courses"}}
 celery_app.autodiscover_tasks(["backend.app"])

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StatusMessage } from '../components/StatusMessage';
 import { ToastStack, type ToastDescriptor, type ToastVariant } from '../components/ToastStack';
 
@@ -151,11 +151,49 @@ const makeFormDefaults = () => ({ ...defaultCourseValues });
 
 const makeEnrichDefaults = () => ({ ...defaultEnrichValues });
 
+type DraftStatus = 'pending' | 'processing' | 'ready' | 'failed';
+
+interface CourseDraftResponsePayload {
+  id: string;
+  status: DraftStatus;
+  message?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  taskId?: string | null;
+  draft?: Partial<CourseFormValues> | null;
+  error?: string | null;
+}
+
+interface DraftState {
+  id: string;
+  status: DraftStatus;
+  message: string;
+  error: string;
+  updatedAt: string;
+  draft: CourseFormValues | null;
+}
+
 const createToastId = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
   }
   return Math.random().toString(36).slice(2);
+};
+
+const normaliseDraftResponse = (payload: CourseDraftResponsePayload): DraftState => {
+  const message = typeof payload.message === 'string' ? payload.message : '';
+  const error = typeof payload.error === 'string' ? payload.error : '';
+  const draftValues = payload.draft
+    ? ({ ...makeFormDefaults(), ...payload.draft } as CourseFormValues)
+    : null;
+  return {
+    id: payload.id,
+    status: payload.status,
+    message,
+    error,
+    updatedAt: payload.updatedAt,
+    draft: draftValues,
+  };
 };
 
 async function extractErrorMessage(response: Response): Promise<string> {
@@ -175,12 +213,17 @@ export default function Home() {
   const [enrichData, setEnrichData] = useState<EnrichFormValues>(makeEnrichDefaults);
   const [editingCourseId, setEditingCourseId] = useState<string | null>(null);
   const [editingCourseVersion, setEditingCourseVersion] = useState<number | null>(null);
-  const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
+  const [modalMode, setModalMode] = useState<'create' | 'edit' | 'review'>('create');
   const [modalFormData, setModalFormData] = useState<CourseFormValues>(makeFormDefaults);
   const [modalAlert, setModalAlert] = useState<AlertState>(defaultAlert);
   const [enrichAlert, setEnrichAlert] = useState<AlertState>(defaultAlert);
   const [isLoading, setIsLoading] = useState(false);
   const [isEnriching, setIsEnriching] = useState(false);
+  const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
+  const [draftStatus, setDraftStatus] = useState<DraftState | null>(null);
+  const draftPollRef = useRef<ReturnType<typeof window.setInterval> | null>(null);
+  const lastDraftMessageRef = useRef<string>('');
+  const handledDraftIdsRef = useRef<Set<string>>(new Set());
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isModalSubmitting, setIsModalSubmitting] = useState(false);
   const [toasts, setToasts] = useState<ToastDescriptor[]>([]);
@@ -206,6 +249,71 @@ export default function Home() {
   const dismissToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
   }, []);
+
+  const stopDraftPolling = useCallback(() => {
+    if (draftPollRef.current !== null) {
+      window.clearInterval(draftPollRef.current);
+      draftPollRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => stopDraftPolling();
+  }, [stopDraftPolling]);
+
+  const resetDraftWorkflow = useCallback(() => {
+    stopDraftPolling();
+    setDraftStatus(null);
+    setActiveDraftId(null);
+    lastDraftMessageRef.current = '';
+    handledDraftIdsRef.current = new Set();
+    setEnrichAlert(defaultAlert);
+  }, [stopDraftPolling]);
+
+  const updateDraftState = useCallback(
+    (next: DraftState) => {
+      setDraftStatus(next);
+      const toastMessage = next.message || next.error;
+      if (toastMessage && toastMessage !== lastDraftMessageRef.current) {
+        const variant: ToastVariant =
+          next.status === 'failed' ? 'error' : next.status === 'ready' ? 'success' : 'info';
+        pushToast(toastMessage, variant);
+        lastDraftMessageRef.current = toastMessage;
+      }
+      if (next.status === 'ready' || next.status === 'failed') {
+        stopDraftPolling();
+      }
+    },
+    [pushToast, stopDraftPolling]
+  );
+
+  const startDraftPolling = useCallback(
+    (draftId: string) => {
+      stopDraftPolling();
+      const poll = async () => {
+        try {
+          const response = await fetch(`${API_BASE}/courses/draft/${draftId}`, {
+            headers: { Accept: 'application/json' },
+          });
+          if (!response.ok) {
+            const detail = await extractErrorMessage(response);
+            throw new Error(detail || 'Failed to fetch draft status');
+          }
+          const payload = (await response.json()) as CourseDraftResponsePayload;
+          const normalised = normaliseDraftResponse(payload);
+          updateDraftState(normalised);
+        } catch (error) {
+          console.error('Draft polling failed', error);
+          const message = error instanceof Error ? error.message : 'Failed to fetch draft status';
+          pushToast(message, 'error');
+          stopDraftPolling();
+        }
+      };
+      poll();
+      draftPollRef.current = window.setInterval(poll, 3000);
+    },
+    [pushToast, stopDraftPolling, updateDraftState]
+  );
 
   const loadCourses = useCallback(
     async ({ showToastOnError = true, silent = false }: LoadOptions = {}) => {
@@ -304,6 +412,35 @@ export default function Home() {
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
   }, [loadCourses]);
+
+  useEffect(() => {
+    if (!draftStatus) {
+      return;
+    }
+    if (draftStatus.status === 'ready') {
+      if (draftStatus.draft && !handledDraftIdsRef.current.has(draftStatus.id)) {
+        handledDraftIdsRef.current.add(draftStatus.id);
+        setModalMode('review');
+        setModalFormData({ ...makeFormDefaults(), ...draftStatus.draft });
+        setModalAlert({ message: 'Review the draft before saving', variant: 'info' });
+        setIsModalOpen(true);
+      }
+      setEnrichAlert({
+        message: draftStatus.message || 'Draft ready for review',
+        variant: 'success',
+      });
+    } else if (draftStatus.status === 'failed') {
+      setEnrichAlert({
+        message: draftStatus.error || draftStatus.message || 'Draft creation failed',
+        variant: 'error',
+      });
+    } else {
+      setEnrichAlert({
+        message: draftStatus.message || 'Processing draft…',
+        variant: 'info',
+      });
+    }
+  }, [draftStatus]);
 
   const handleEnrichChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = event.target;
@@ -411,15 +548,21 @@ export default function Home() {
     setEditingCourseVersion(null);
     setModalFormData(makeFormDefaults());
     setModalAlert({ message: '', variant: 'neutral' });
+    if (modalMode === 'review' || activeDraftId) {
+      resetDraftWorkflow();
+    }
     setModalMode('create');
-  }, []);
+  }, [activeDraftId, modalMode, resetDraftWorkflow]);
 
   const handleModalSubmit = useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();
       const payload: CourseFormValues = { ...modalFormData };
 
-      if (modalMode === 'create') {
+      const isReview = modalMode === 'review';
+      const isCreate = modalMode === 'create' || isReview;
+
+      if (isCreate) {
         if (!payload.link || !payload.course_name) {
           const message = 'Link and Course Name are required';
           setModalAlert({ message, variant: 'error' });
@@ -435,12 +578,18 @@ export default function Home() {
         }
       }
 
-      const isCreate = modalMode === 'create';
-      const endpoint = isCreate
-        ? `${API_BASE}/courses`
-        : `${API_BASE}/courses/${editingCourseId}`;
+      let endpoint = `${API_BASE}/courses`;
+      if (isCreate) {
+        if (isReview && activeDraftId) {
+          const params = new URLSearchParams({ draft_id: activeDraftId });
+          endpoint = `${API_BASE}/courses?${params.toString()}`;
+        }
+      } else if (editingCourseId) {
+        endpoint = `${API_BASE}/courses/${editingCourseId}`;
+      }
+
       const method = isCreate ? 'POST' : 'PUT';
-      const actionLabel = isCreate ? 'Creating course…' : 'Updating course…';
+      const actionLabel = isReview ? 'Saving draft…' : isCreate ? 'Creating course…' : 'Updating course…';
       setModalAlert({ message: actionLabel, variant: 'info' });
       pushToast(actionLabel, 'info');
       setIsModalSubmitting(true);
@@ -459,32 +608,52 @@ export default function Home() {
           throw new Error(detail || 'Request failed');
         }
         await loadCourses({ showToastOnError: false, silent: true });
-        pushToast(isCreate ? 'Course added' : 'Course updated', 'success');
+        const successMessage = isReview ? 'Draft saved' : isCreate ? 'Course added' : 'Course updated';
+        pushToast(successMessage, 'success');
+        if (isReview) {
+          resetDraftWorkflow();
+        }
         handleCloseModal();
       } catch (error) {
         console.error(error);
-        const message = error instanceof Error ? error.message : isCreate ? 'Failed to create course' : 'Failed to update course';
+        const message =
+          error instanceof Error
+            ? error.message
+            : isReview
+            ? 'Failed to save draft'
+            : isCreate
+            ? 'Failed to create course'
+            : 'Failed to update course';
         setModalAlert({ message, variant: 'error' });
         pushToast(message, 'error');
       } finally {
         setIsModalSubmitting(false);
       }
     },
-    [editingCourseId, editingCourseVersion, handleCloseModal, loadCourses, modalFormData, modalMode, pushToast]
+    [activeDraftId, editingCourseId, editingCourseVersion, handleCloseModal, loadCourses, modalFormData, modalMode, pushToast, resetDraftWorkflow]
   );
 
   const handleEnrichSubmit = useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();
-      if (!enrichData.link.trim()) {
+      const trimmedLink = enrichData.link.trim();
+      if (!trimmedLink) {
         const message = 'Course URL is required';
         setEnrichAlert({ message, variant: 'error' });
         pushToast(message, 'error');
         return;
       }
+      if (draftStatus && (draftStatus.status === 'pending' || draftStatus.status === 'processing')) {
+        const message = 'A draft is already in progress. Please wait for it to finish.';
+        setEnrichAlert({ message, variant: 'info' });
+        pushToast(message, 'info');
+        return;
+      }
       setIsEnriching(true);
+      stopDraftPolling();
+      handledDraftIdsRef.current = new Set();
       const payload: Record<string, string> = {
-        link: enrichData.link.trim(),
+        link: trimmedLink,
       };
       if (enrichData.provider.trim()) {
         payload.provider = enrichData.provider.trim();
@@ -492,38 +661,52 @@ export default function Home() {
       if (enrichData.courseName.trim()) {
         payload.courseName = enrichData.courseName.trim();
       }
-      const actionLabel = 'Enriching course…';
+      const actionLabel = 'Creating draft…';
       setEnrichAlert({ message: actionLabel, variant: 'info' });
       pushToast(actionLabel, 'info');
       try {
-        const response = await fetch(`${API_BASE}/courses/enrich`, {
+        const response = await fetch(`${API_BASE}/courses/draft`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
           body: JSON.stringify(payload),
         });
         if (!response.ok) {
           const detail = await extractErrorMessage(response);
-          throw new Error(detail || 'Enrichment failed');
+          throw new Error(detail || 'Failed to create draft');
         }
-        setEnrichAlert({ message: 'Course added from URL', variant: 'success' });
-        pushToast('Course added from URL', 'success');
+        const draftPayload = (await response.json()) as CourseDraftResponsePayload;
+        const draftState = normaliseDraftResponse(draftPayload);
+        lastDraftMessageRef.current = draftState.message || draftState.error;
+        setActiveDraftId(draftState.id);
+        setDraftStatus(draftState);
         setEnrichData(makeEnrichDefaults());
-        await loadCourses({ showToastOnError: false, silent: true });
+        if (draftState.message) {
+          pushToast(draftState.message, 'info');
+        }
+        if (draftState.status !== 'ready' && draftState.status !== 'failed') {
+          startDraftPolling(draftState.id);
+        }
       } catch (error) {
-        console.error('Enrichment error', error);
-        const message = error instanceof Error ? error.message : 'Enrichment failed';
+        console.error('Draft creation error', error);
+        const message = error instanceof Error ? error.message : 'Failed to create draft';
         setEnrichAlert({ message, variant: 'error' });
         pushToast(message, 'error');
+        setDraftStatus(null);
+        setActiveDraftId(null);
+        lastDraftMessageRef.current = '';
+        handledDraftIdsRef.current = new Set();
       } finally {
         setIsEnriching(false);
       }
     },
-    [enrichData, loadCourses, pushToast]
+    [draftStatus, enrichData, pushToast, startDraftPolling, stopDraftPolling]
   );
 
   const hasActiveFilters = useMemo(() => {
     return filterKeys.some((key) => filtersState[key].trim());
   }, [filtersState]);
+
+  const isDraftActive = draftStatus ? draftStatus.status === 'pending' || draftStatus.status === 'processing' : false;
 
   const tableRows = useMemo(() => {
     if (isLoading) {
@@ -586,10 +769,13 @@ export default function Home() {
   const disableNext =
     !hasResults || !pagination.totalPages || pagination.page >= pagination.totalPages || isLoading;
 
-  const modalTitle = modalMode === 'create' ? 'Add Course' : 'Update Course';
+  const modalTitle =
+    modalMode === 'create' ? 'Add Course' : modalMode === 'review' ? 'Review Draft' : 'Update Course';
   const modalDescription =
     modalMode === 'create'
       ? 'Create a course manually by completing the fields below.'
+      : modalMode === 'review'
+      ? 'Review the draft details, make any edits, and save the course.'
       : 'Modify the selected course and save your changes.';
 
   return (
@@ -628,6 +814,7 @@ export default function Home() {
                   onChange={handleEnrichChange}
                   className="field-input"
                   placeholder="https://example.com/course"
+                  disabled={isEnriching || isDraftActive}
                 />
               </label>
               <label className="field-label">
@@ -639,6 +826,7 @@ export default function Home() {
                   onChange={handleEnrichChange}
                   className="field-input"
                   placeholder="e.g. Coursera"
+                  disabled={isEnriching || isDraftActive}
                 />
               </label>
               <label className="field-label">
@@ -650,11 +838,12 @@ export default function Home() {
                   onChange={handleEnrichChange}
                   className="field-input"
                   placeholder="e.g. Intro to AI"
+                  disabled={isEnriching || isDraftActive}
                 />
               </label>
               <div className="flex items-end">
-                <button type="submit" className="btn-primary" disabled={isEnriching}>
-                  {isEnriching ? 'Enriching…' : 'Enrich & Add'}
+                <button type="submit" className="btn-primary" disabled={isEnriching || isDraftActive}>
+                  {isEnriching ? 'Starting…' : isDraftActive ? 'Processing…' : 'Create Draft'}
                 </button>
               </div>
             </form>
@@ -854,7 +1043,13 @@ export default function Home() {
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <button type="submit" className="btn-primary" disabled={isModalSubmitting}>
-                  {isModalSubmitting ? 'Saving…' : modalMode === 'create' ? 'Add Course' : 'Save changes'}
+                {isModalSubmitting
+                  ? 'Saving…'
+                  : modalMode === 'create'
+                  ? 'Add Course'
+                  : modalMode === 'review'
+                  ? 'Save Draft'
+                  : 'Save changes'}
                 </button>
                 <button
                   type="button"

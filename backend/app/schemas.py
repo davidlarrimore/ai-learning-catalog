@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
@@ -79,3 +79,31 @@ class CourseEnrichRequest(BaseModel):
     course_name: Optional[str] = Field(default=None, alias="courseName")
 
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+
+DraftStatus = Literal["pending", "processing", "ready", "failed"]
+
+
+class CourseDraftRequest(BaseModel):
+    link: HttpUrl
+    provider: Optional[str] = None
+    course_name: Optional[str] = Field(default=None, alias="courseName")
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+
+class CourseDraftData(CourseBase):
+    ...
+
+
+class CourseDraftResponse(BaseModel):
+    id: str
+    status: DraftStatus
+    message: Optional[str] = None
+    created_at: datetime = Field(alias="createdAt")
+    updated_at: datetime = Field(alias="updatedAt")
+    task_id: Optional[str] = Field(default=None, alias="taskId")
+    draft: Optional[CourseDraftData] = None
+    error: Optional[str] = None
+
+    model_config = ConfigDict(populate_by_name=True)

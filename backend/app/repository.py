@@ -4,12 +4,14 @@ from __future__ import annotations
 import json
 import math
 import sqlite3
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from .course_model import Course, course_sort_key, load_courses
+from redis import Redis
 
 
 SQLITE_PRAGMAS = (
@@ -94,6 +96,56 @@ def _course_to_db_payload(course: Course, **overrides: Any) -> dict[str, Any]:
     return data
 
 
+def _parse_datetime(value: Any) -> datetime:
+    if isinstance(value, datetime):
+        return value.astimezone(timezone.utc)
+    if isinstance(value, str):
+        return datetime.fromisoformat(value)
+    raise TypeError(f"Unsupported datetime payload: {value!r}")
+
+
+COURSE_COLUMNS: tuple[str, ...] = (
+    "provider",
+    "link",
+    "course_name",
+    "summary",
+    "track",
+    "platform",
+    "hands_on",
+    "skill_level",
+    "difficulty",
+    "length",
+    "evidence_of_completion",
+)
+
+
+_MISSING = object()
+
+DRAFT_KEY_PREFIX = "courses:draft:"
+
+
+def _normalise_course_fields(payload: Mapping[str, Any]) -> dict[str, str]:
+    course = _normalize_course(payload)
+    data = course.model_dump()
+    return {column: data[column] for column in COURSE_COLUMNS}
+
+
+def _draft_key(draft_id: str) -> str:
+    return f"{DRAFT_KEY_PREFIX}{draft_id}"
+
+
+def _loads_draft(raw: str | None) -> dict[str, Any] | None:
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    return data
+
+
 @dataclass
 class CourseQueryResult:
     items: list[Course]
@@ -114,12 +166,102 @@ class CourseQueryResult:
         }
 
 
-class CourseRepository:
-    """SQLite-backed course repository."""
+@dataclass
+class CourseDraft:
+    id: str
+    status: str
+    status_message: str
+    link: str
+    provider: str
+    course_name: str
+    summary: str
+    track: str
+    platform: str
+    hands_on: str
+    skill_level: str
+    difficulty: str
+    length: str
+    evidence_of_completion: str
+    task_id: str | None
+    error: str | None
+    created_at: datetime
+    updated_at: datetime
 
-    def __init__(self, db_path: Path, seed_json: Path | None = None) -> None:
+    def course_payload(self) -> dict[str, str]:
+        return {
+            "provider": self.provider,
+            "link": self.link,
+            "course_name": self.course_name,
+            "summary": self.summary,
+            "track": self.track,
+            "platform": self.platform,
+            "hands_on": self.hands_on,
+            "skill_level": self.skill_level,
+            "difficulty": self.difficulty,
+            "length": self.length,
+            "evidence_of_completion": self.evidence_of_completion,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = self.course_payload()
+        payload.update(
+            {
+                "id": self.id,
+                "status": self.status,
+                "status_message": self.status_message,
+                "task_id": self.task_id,
+                "error": self.error,
+                "created_at": self.created_at.isoformat(),
+                "updated_at": self.updated_at.isoformat(),
+            }
+        )
+        return payload
+
+    def as_dict(self) -> dict[str, Any]:
+        return self.to_dict()
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "CourseDraft":
+        base = {column: payload.get(column) for column in COURSE_COLUMNS}
+        normalised = _normalise_course_fields({k: v for k, v in base.items() if v is not None})
+        created_raw = payload.get("created_at") or _utc_now_iso()
+        updated_raw = payload.get("updated_at") or created_raw
+        return cls(
+            id=str(payload.get("id") or uuid.uuid4().hex),
+            status=str(payload.get("status") or "pending"),
+            status_message=str(payload.get("status_message") or ""),
+            link=normalised.get("link", ""),
+            provider=normalised.get("provider", ""),
+            course_name=normalised.get("course_name", ""),
+            summary=normalised.get("summary", "Unknown"),
+            track=normalised.get("track", ""),
+            platform=normalised.get("platform", ""),
+            hands_on=normalised.get("hands_on", "Unknown"),
+            skill_level=normalised.get("skill_level", "Unknown"),
+            difficulty=normalised.get("difficulty", "Unknown"),
+            length=normalised.get("length", "0 Hours"),
+            evidence_of_completion=normalised.get("evidence_of_completion", "Unknown"),
+            task_id=(payload.get("task_id") or None),
+            error=(payload.get("error") or None),
+            created_at=_parse_datetime(created_raw),
+            updated_at=_parse_datetime(updated_raw),
+        )
+
+
+class CourseRepository:
+    """SQLite-backed course repository with Redis-backed draft storage."""
+
+    def __init__(
+        self,
+        db_path: Path,
+        seed_json: Path | None = None,
+        *,
+        redis_url: str | None = None,
+    ) -> None:
         self.db_path = Path(db_path)
         self.seed_json = Path(seed_json) if seed_json else None
+        self._redis_url = redis_url
+        self._redis: Redis | None = None
         self._initialise()
 
     # ---------------------------------------------------------------------
@@ -138,6 +280,30 @@ class CourseRepository:
             conn.executescript(SCHEMA)
             self._apply_migrations(conn)
         self._seed_from_json_if_needed()
+
+    def _get_redis(self) -> Redis:
+        if not self._redis_url:
+            raise RuntimeError("Redis URL is not configured for draft storage")
+        if self._redis is None:
+            self._redis = Redis.from_url(self._redis_url, decode_responses=True)
+        return self._redis
+
+    def _load_draft(self, draft_id: str) -> CourseDraft | None:
+        redis = self._get_redis()
+        data = _loads_draft(redis.get(_draft_key(draft_id)))
+        if data is None:
+            return None
+        return CourseDraft.from_dict(data)
+
+    def _persist_draft(self, draft: CourseDraft) -> CourseDraft:
+        redis = self._get_redis()
+        payload = json.dumps(draft.to_dict(), ensure_ascii=False)
+        redis.set(_draft_key(draft.id), payload)
+        return draft
+
+    def _remove_draft(self, draft_id: str) -> None:
+        redis = self._get_redis()
+        redis.delete(_draft_key(draft_id))
 
     def _apply_migrations(self, conn: sqlite3.Connection) -> None:
         info = self._table_columns(conn, "courses")
@@ -273,6 +439,103 @@ class CourseRepository:
                 (link,),
             ).fetchone()
         return self._row_to_course(row) if row else None
+
+    def get_draft(self, draft_id: str) -> CourseDraft | None:
+        return self._load_draft(draft_id)
+
+    # ------------------------------------------------------------------
+    # Draft course helpers
+    # ------------------------------------------------------------------
+    def create_or_reset_draft(
+        self,
+        *,
+        link: str,
+        provider: str = "",
+        course_name: str = "",
+    ) -> CourseDraft:
+        cleaned_link = link.strip()
+        if not cleaned_link:
+            raise ValueError("Course draft requires a link")
+        base_payload: dict[str, Any] = {"link": cleaned_link}
+        if provider:
+            base_payload["provider"] = provider
+        if course_name:
+            base_payload["course_name"] = course_name
+
+        course_fields = _normalise_course_fields(base_payload)
+        now = datetime.now(timezone.utc)
+        draft = CourseDraft(
+            id=uuid.uuid4().hex,
+            status="pending",
+            status_message="Draft queued for processing",
+            link=course_fields["link"],
+            provider=course_fields["provider"],
+            course_name=course_fields["course_name"],
+            summary=course_fields["summary"],
+            track=course_fields["track"],
+            platform=course_fields["platform"],
+            hands_on=course_fields["hands_on"],
+            skill_level=course_fields["skill_level"],
+            difficulty=course_fields["difficulty"],
+            length=course_fields["length"],
+            evidence_of_completion=course_fields["evidence_of_completion"],
+            task_id=None,
+            error=None,
+            created_at=now,
+            updated_at=now,
+        )
+        return self._persist_draft(draft)
+
+    def update_draft(
+        self,
+        draft_id: str,
+        *,
+        status: str | None = None,
+        message: str | None = None,
+        task_id: Any = _MISSING,
+        error: Any = _MISSING,
+        course_payload: Mapping[str, Any] | None = None,
+    ) -> CourseDraft:
+        draft = self._load_draft(draft_id)
+        if draft is None:
+            raise KeyError(f"Draft not found: {draft_id}")
+        updated = False
+        if course_payload is not None:
+            combined = {**draft.course_payload(), **course_payload}
+            course_fields = _normalise_course_fields(combined)
+            draft.link = course_fields["link"]
+            draft.provider = course_fields["provider"]
+            draft.course_name = course_fields["course_name"]
+            draft.summary = course_fields["summary"]
+            draft.track = course_fields["track"]
+            draft.platform = course_fields["platform"]
+            draft.hands_on = course_fields["hands_on"]
+            draft.skill_level = course_fields["skill_level"]
+            draft.difficulty = course_fields["difficulty"]
+            draft.length = course_fields["length"]
+            draft.evidence_of_completion = course_fields["evidence_of_completion"]
+            updated = True
+        if status is not None:
+            draft.status = status
+            updated = True
+        if message is not None:
+            draft.status_message = message
+            updated = True
+        if task_id is not _MISSING:
+            draft.task_id = str(task_id) if task_id else None
+            updated = True
+        if error is not _MISSING:
+            draft.error = str(error) if error else None
+            updated = True
+
+        if not updated:
+            return draft
+
+        draft.updated_at = datetime.now(timezone.utc)
+        return self._persist_draft(draft)
+
+    def delete_draft(self, draft_id: str) -> None:
+        self._remove_draft(draft_id)
 
     # ------------------------------------------------------------------
     # Public API

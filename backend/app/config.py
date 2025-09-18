@@ -27,6 +27,7 @@ class Settings:
         self.source_courses_path = data_path
         self.sqlite_path = sqlite_path
         redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
+        self.redis_url = redis_url
         self.celery_broker_url = os.getenv("CELERY_BROKER_URL", redis_url)
         self.celery_result_backend = os.getenv("CELERY_RESULT_BACKEND", redis_url)
         self.task_timeout = int(os.getenv("TASK_TIMEOUT", "10"))
